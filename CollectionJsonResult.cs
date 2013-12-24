@@ -1,7 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
+using System.Reflection;
+using System.Runtime.Remoting;
+using System.Web;
+using System.Web.Hosting;
 using System.Web.Mvc;
+using System.Web.Routing;
+using CollectionJsonExtended.Client.Attributes;
+using CollectionJsonExtended.Client.Extensions;
 using CollectionJsonExtended.Core;
 using Newtonsoft.Json;
 
@@ -11,6 +19,7 @@ namespace CollectionJsonExtended.Client
     public abstract class CollectionJsonResult : ActionResult
     {
         protected static readonly CollectionJsonSerializerSettings DefaultSerializerSettings;
+
         static CollectionJsonResult()
         {
             DefaultSerializerSettings = new CollectionJsonSerializerSettings
@@ -20,8 +29,57 @@ namespace CollectionJsonExtended.Client
                                                 Formatting = Formatting.Indented
                                             };
         }
+
     }
-    
+
+
+    //CollectionJsonQueryResult
+
+    //CollectionJsonTemplateResult
+
+    //CollectionJsonErrorResult
+
+    //working approach (via result) but not really nice. we cannot really find the routes easily.
+    public class CollectionJsonEntityResult<TEntity> : CollectionJsonResult where TEntity : class, new()
+    {
+        readonly TEntity _entity;
+
+        public CollectionJsonEntityResult(TEntity entity,
+            CollectionJsonSerializerSettings serializerSettings = null) //TODO add my collection json formater here, inject? or what?
+        {
+            SerializerSettings = serializerSettings ?? DefaultSerializerSettings;
+            _entity = entity;
+        }
+
+
+        public readonly CollectionJsonSerializerSettings SerializerSettings;
+
+        public override void ExecuteResult(ControllerContext context)
+        {
+            if (context == null)
+                throw new ArgumentNullException("context");
+
+            var httpContext = context.HttpContext;
+            var response = httpContext.Response;
+            var httpMethod = httpContext.Request.HttpMethod.ToUpperInvariant();
+
+            if (_entity != null && httpMethod == "POST")
+            {
+                var requestUri = httpContext.Request.Url;
+                var writer = new CollectionJsonWriter<TEntity>(_entity, requestUri, SerializerSettings);
+                
+                response.StatusCode = (int) HttpStatusCode.OK;
+                response.ContentType = "application/json"; //will be application/collection+json;
+                response.Write(writer.Serialize());
+
+                return;
+            }
+            
+            response.StatusCode = (int)HttpStatusCode.NotFound;
+        }
+    }
+
+
     public class CollectionJsonResult<TEntity> : CollectionJsonResult where TEntity : class, new()
     {
         readonly TEntity _entity;
@@ -60,39 +118,65 @@ namespace CollectionJsonExtended.Client
             }
         }
 
+        
         /*Override*/
         /// <summary>
         /// Enables processing of the result of an action method by a custom 
         /// type that inherits from the 
         /// <see cref="T:System.Web.Mvc.ActionResult"/> class.
         /// </summary>
-        /// <param name="context">The context in which the result is executed. 
-        /// The context information includes the controller, HTTP content, 
-        /// request context, and route data.</param>
-        public override void ExecuteResult(ControllerContext context)
+        /// <param name="controllerContext">The controllerContext in which the result is executed. 
+        /// The controllerContext information includes the controller, HTTP content, 
+        /// request controllerContext, and route data.</param>
+        public override void ExecuteResult(ControllerContext controllerContext)
         {
             //TODO: How to ensure System.Web is in the nuget package, that is, it MUST be required!
 
-            if (context == null)
-                throw new ArgumentNullException("context");
+            if (controllerContext == null)
+                throw new ArgumentNullException("controllerContext");
+
+            //var myRouteData = controllerContext.RouteData;
+            //var controllerName = myRouteData.Values["controller"];
+            //foreach (var route in RouteTable.Routes.Where(r =>r.GetType() == typeof(Route)))
+            //{
+            //    var routeData = route.GetRouteData(controllerContext.HttpContext);
+            //    if (routeData != null
+            //        && routeData.Values["controller"] == controllerName)
+
+            //        routeData.DataTokens["Foo"] = "Bar";
 
 
-            var httpMethod = context.HttpContext.Request.HttpMethod.ToUpperInvariant();
+            //    //Add route and method name to Dictionary
 
-            var statusCode = GetStatusCode(httpMethod);
+            //}
 
-            var response = context.HttpContext.Response;
-
-            var requestUri = context.HttpContext.Request.Url;
-
-            //TODO we need BaseUri
-            //"/some/url/id/" + _entity.GetType().GetProperty("Id").GetValue(_entity) goes to collection href with id for entity
-            //"/some/url/id/" goes to collection href with id for entities
-
+            var httpContext = controllerContext.HttpContext;
+            var httpMethod = httpContext.Request.HttpMethod.ToUpperInvariant();
+            var response = httpContext.Response;
+            
+            var controllerType = controllerContext.Controller.GetType();
+            var controllerDescriptor = new ReflectedControllerDescriptor(controllerType);
+            var actionDescriptor = controllerDescriptor.FindAction(controllerContext,
+                controllerContext.RouteData.GetRequiredString("action"));
+            
+            var statusCode = HttpStatusCode.NotFound; //This is initially 404. If NO ActionSelector (and route in it in Mvc5) is set, it will always return 404 not found. So you HAVE to set the attribute in the controller.
 
             response.ClearHeaders();
             response.ClearContent();
 
+            response.StatusCode = (int) HttpStatusCode.NotImplemented; //501 for now. test if our match stuff works
+
+            return;
+            
+            /* Check if action selector attribute can be invoked (http method check in RouteCollectionJson attributes) */
+            foreach (var actionSelector in  actionDescriptor.GetSelectors())
+            {
+                if (actionSelector.Invoke(controllerContext))
+                {
+                    statusCode = GetStatusCode(httpMethod);
+                    break;
+                }
+            }
             response.StatusCode = (int)statusCode;
 
             if (response.StatusCode >= 400)
@@ -103,6 +187,8 @@ namespace CollectionJsonExtended.Client
                 return; //TODO: create an error response
             }
 
+            //ResolveRoutes(controllerContext);
+            var requestUri = httpContext.Request.Url;
             switch (statusCode)
             {
                 case HttpStatusCode.Created:
@@ -117,19 +203,55 @@ namespace CollectionJsonExtended.Client
 
         
         /*Methods*/
+
+
+        void ResolveRoutes(ControllerContext context)
+        {
+            var controllerType = context.Controller.GetType();
+            var controllerDescriptor = new ReflectedControllerDescriptor(controllerType);
+            
+
+            foreach (var action in controllerDescriptor.GetCanonicalActions())
+            {
+
+                var actionName = action.ActionName;
+                var actionDescriptor = controllerDescriptor.FindAction(context, actionName);
+                
+
+                // Get any attributes (filters) on the action
+                //var attributes = action.GetCustomAttributes(typeof(CollectionJsonRouteAttribute), true); //this is the abstract which is currently not exisiting. we might use an interface...
+                //.SingleOrDefault(a => a.GetType().GetInterface("ICollectionJsonRoute", true) != null);
+
+
+
+              
+                //var selectors = action.GetSelectors();
+
+
+                //foreach (var actionSelector in selectors)
+                //{
+                //    actionSelector.Invoke(context);
+                //}
+
+                //var routeInfo = attributes;
+
+
+            }
+        }
+
         HttpStatusCode GetStatusCode(string httpMethod)
         {
             switch (httpMethod)
             {
-                case "GET":
+                case "GET": //read
                     if (_entity != null)
                         return HttpStatusCode.OK;
                     return HttpStatusCode.NotFound;
-                case "UPDATE":
+                case "PUT": //update
                     if (_entity != null)
                         return HttpStatusCode.OK;
                     return HttpStatusCode.NotFound;
-                case "POST":
+                case "POST": //create
                     if (_entity != null)
                         return HttpStatusCode.Created;
                     return HttpStatusCode.NotFound;
@@ -137,7 +259,7 @@ namespace CollectionJsonExtended.Client
                     if (_entity != null)
                         return HttpStatusCode.NoContent;
                     return HttpStatusCode.NotFound;
-                case "QUERY":
+                case "QUERY": //read multiple
                     if (_entities != null)
                         return HttpStatusCode.OK;
                     return HttpStatusCode.NotFound;
