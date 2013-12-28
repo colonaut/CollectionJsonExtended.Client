@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.InteropServices;
 using System.Web.Mvc.Routing;
 using System.Web.Routing;
 //[assembly: WebActivatorEx.PreApplicationStartMethod(typeof(CollectionJsonPostAttribute), "Start")]
@@ -16,46 +17,90 @@ namespace CollectionJsonExtended.Client.Attributes
     //RouteCollectionJsonQueriesAttribute //returns the top level queries array
     //RouteCollectionJsonTemplateAttribute
 
-    //the abstract
+    //the abstract attribute
     public abstract class RouteCollectionJsonAttribute : RouteProviderAttribute, IRouteInfoProvider
     {
-
-        protected RouteCollectionJsonAttribute(string template,
-            string version)
-            : base(template)
-        {
-            Version = version;
-        }
         
-        protected string Version { get; set; }
-
-        public override RouteValueDictionary DataTokens
-        {
-            get { return new RouteValueDictionary
-                         {
-                            {
-                                 "CollectionJson",
-                                 new CollectionJsonRouteDataToken
-                                 {
-                                     Version = Version
-                                 }
-                            }
-                         };
-            }
-        }
-    }
-
-
-    [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
-    public sealed class RouteCollectionJsonCreateAttribute : RouteCollectionJsonAttribute
-    {
-        public RouteCollectionJsonCreateAttribute(string template,
-            string version = "1.0")
-            : base(template, version)
+        protected RouteCollectionJsonAttribute(string template)
+            : base(template)
         {
             
         }
 
+        protected string Version = "1.0";
+    }
+
+
+    [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
+    //post/get/query/etc. should only support the param. (they use route prefix, or incoming controller request uri, if not set)
+    public sealed class RouteCollectionJsonBaseAttribute : RouteCollectionJsonAttribute
+    {
+        public RouteCollectionJsonBaseAttribute(string template)
+            : base(template)
+        {
+            
+        }
+
+        
+        public RenderType Render
+        {
+            get { return RenderType.Json; }
+        }
+
+
+        public override RouteValueDictionary Constraints
+        {
+            get
+            {
+                return new RouteValueDictionary
+                       {
+                           {"httpMethod", new HttpMethodConstraint(new[] {"GET"})}
+                       };
+
+            }
+        }
+    }
+
+    [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
+    public sealed class RouteCollectionJsonItemAttribute : RouteCollectionJsonAttribute
+    {
+        public RouteCollectionJsonItemAttribute(string template)
+            : base(template)
+        {
+            
+        }
+
+        
+        public string Rel = null;
+        public RenderType Render = RenderType.Json;
+
+
+        public override RouteValueDictionary Constraints
+        {
+            get
+            {
+                return new RouteValueDictionary
+                       {
+                           {"httpMethod", new HttpMethodConstraint(new[] {"GET"})}
+                       };
+
+            }
+        }
+    }
+
+    [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
+    public sealed class RouteCollectionJsonCreateAttribute : RouteCollectionJsonAttribute
+    {
+        public RouteCollectionJsonCreateAttribute(string template)
+            : base(template)
+        {
+            
+        }
+
+        public RenderType Render
+        {
+            get { return RenderType.HttpResponse; }
+        }
         
         public override RouteValueDictionary Constraints
         {
@@ -71,14 +116,46 @@ namespace CollectionJsonExtended.Client.Attributes
     }
 
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
+    public sealed class RouteCollectionJsonDeleteAttribute : RouteCollectionJsonAttribute
+    {
+        public RouteCollectionJsonDeleteAttribute(string template)
+            : base(template)
+        {
+
+        }
+
+
+        public RenderType Render
+        {
+            get { return RenderType.HttpResponse; }
+        }
+
+
+        public override RouteValueDictionary Constraints
+        {
+            get
+            {
+                return new RouteValueDictionary
+                       {
+                           {"httpMethod", new HttpMethodConstraint(new[] {"DELETE"})}
+                       };
+
+            }
+        }
+    }
+
+    [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
     public sealed class RouteCollectionJsonQueryAttribute : RouteCollectionJsonAttribute
     {
         public RouteCollectionJsonQueryAttribute(string template,
-            string version = "1.0")
-            : base(template, version)
+            string rel) : base(template)
         {
-            
+            Rel = rel;
         }
+
+        
+        public string Rel { get; set; }
+        public RenderType Render = RenderType.Json;
 
         
         public override RouteValueDictionary Constraints
@@ -92,34 +169,8 @@ namespace CollectionJsonExtended.Client.Attributes
 
             }
         }
-
     }
 
-    [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
-    //post/get/query/etc. should only support the param. (they use route prefix, or incoming controller request uri, if not set)
-    public sealed class RouteCollectionJsonAttributes : RouteCollectionJsonAttribute
-    {
-        public RouteCollectionJsonAttributes(string template,
-            string version = "1.0")
-            : base(template, version)
-        {
-            Version = version;
-        }
-
-        
-        public override RouteValueDictionary Constraints
-        {
-            get
-            {
-                return new RouteValueDictionary
-                       {
-                           {"httpMethod", new HttpMethodConstraint(new[] {"GET"})}
-                       };
-
-            }
-        }
-
-
-    }
+    
 
 }

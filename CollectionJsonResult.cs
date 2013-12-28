@@ -135,6 +135,16 @@ namespace CollectionJsonExtended.Client
             if (controllerContext == null)
                 throw new ArgumentNullException("controllerContext");
 
+            
+
+            ////TODO versuche sction conroller area schon zu parsen (new Uri?) sollte aber eher im ececute gemacht werden
+            //Uri result;
+            //Uri.TryCreate(routePrefixTemplate, UriKind.RelativeOrAbsolute, out result);
+
+
+
+            return;
+
             //var myRouteData = controllerContext.RouteData;
             //var controllerName = myRouteData.Values["controller"];
             //foreach (var route in RouteTable.Routes.Where(r =>r.GetType() == typeof(Route)))
@@ -204,7 +214,7 @@ namespace CollectionJsonExtended.Client
         
         /*Methods*/
 
-
+        [Obsolete]
         void ResolveRoutes(ControllerContext context)
         {
             var controllerType = context.Controller.GetType();

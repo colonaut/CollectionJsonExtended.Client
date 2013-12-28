@@ -12,10 +12,10 @@ namespace CollectionJsonExtended.Client.Extensions
     public static class CollectionJsonRouteExtensions
     {
 
-        public static Dictionary<string, string> VirtualUrls = new Dictionary<string, string>();
-        
-        //new {controller = "GameSessions", action = "Delete"},
-        //new {httpMethod = new HttpMethodConstraint("DELETE")}
+        public static void PublishCollectionJsonAttributeRoutes(this RouteCollection routes)
+        {
+            RoutesInfo.PublishRoutesInfo();
+        }
 
 
 
