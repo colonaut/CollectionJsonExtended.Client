@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Web.Mvc;
+using System.Web.Routing;
 using System.Web.UI;
 using CollectionJsonExtended.Client.Attributes;
 
@@ -24,7 +25,7 @@ namespace CollectionJsonExtended.Client
             //TODO: throws if not found. We will have to set a better error message via try catch
             //an entity must have an id. otherwise the cj spec is useless.
             //we might think of open the code at some place to treat another property as id.
-            IdentifierType = entityType.GetProperty("Id",
+            EntityIdType = entityType.GetProperty("Id",
                 BindingFlags.IgnoreCase
                 | BindingFlags.Instance
                 | BindingFlags.Public)
@@ -39,7 +40,7 @@ namespace CollectionJsonExtended.Client
         /*Properties*/
         public Type EntityType { get; private set; }
         
-        public Type IdentifierType { get; private set; }
+        public Type EntityIdType { get; private set; }
 
         public RouteInfo Create { get; set; }
         
@@ -60,30 +61,36 @@ namespace CollectionJsonExtended.Client
             return RoutesInfoCollection.SingleOrDefault(x => x.EntityType == entityType);
         }
 
-        public static void PublishRoutesInfo()
+        public static void PublishRoutesInfo(Assembly callingAssembly)
         {
             var controllerTypes =
-                Assembly.GetCallingAssembly().GetTypes()
+                callingAssembly.GetTypes()
                     //Find our controller types    
                     .Where(type => type.IsSubclassOf(typeof (Controller)))
                     .ToList();
 
             foreach (var controllerType in controllerTypes)
+            {
                 PublishRoutesInfo(controllerType);
-            
+            }
+
             var debug = RoutesInfoCollection;
+            var debug2 = RouteTable.Routes;
+
+
         }
 
 
         /*private static methods */
         static void PublishRoutesInfo(Type controllerType)
         {
-            //var controllerDescriptor = new ReflectedControllerDescriptor(controllerType);
             var routePrefixTemplate =
                 (string) controllerType.GetCustomAttributes(typeof (RoutePrefixAttribute))
-                    .Select(a => "//" + a.GetType().GetRuntimeProperty("Prefix").GetValue(a))
+                    .Select(a => a.GetType().GetRuntimeProperty("Prefix").GetValue(a))
                     .SingleOrDefault()
                 ?? string.Empty;
+
+            var controllerName = new ReflectedControllerDescriptor(controllerType).ControllerName;
 
             var methodInfos =
                 controllerType.GetMethods(BindingFlags.Public
@@ -94,13 +101,16 @@ namespace CollectionJsonExtended.Client
                         && mi.ReturnType.IsSubclassOf(typeof(CollectionJsonResult)));
 
             foreach (var methodInfo in methodInfos)
-                PublishRoutesInfo(methodInfo, routePrefixTemplate);
+            {
+                PublishRoutesInfo(methodInfo, controllerName, routePrefixTemplate);
+            }
         }
 
-        static void PublishRoutesInfo(MethodInfo methodInfo, string routePrefixTemplate)
+        static void PublishRoutesInfo(MethodInfo methodInfo, string controllerName, string routePrefixTemplate)
         {
             var entityType = methodInfo.ReturnType.GetGenericArguments().Single();
-
+            var actionName = methodInfo.Name;
+            
             var routesInfo = GetPublishedRoutesInfo(entityType);
             if (routesInfo == null)
             {
@@ -113,9 +123,14 @@ namespace CollectionJsonExtended.Client
             if (createAttribute != null)
                 routesInfo.Create = new RouteInfo
                                     {
+                                        RouteName = createAttribute.Name,
+                                        ControllerName = controllerName,
+                                        ActionName = actionName,
+                                        Version = createAttribute.Version,
+                                        Render = createAttribute.Render,
+
                                         BaseUriTemplate = routePrefixTemplate,
-                                        RelativeUriTemplate = createAttribute.Template,
-                                        Render = createAttribute.Render
+                                        RelativeUriTemplate = createAttribute.Template
                                     };
 
             var deleteAttribute =
@@ -124,9 +139,14 @@ namespace CollectionJsonExtended.Client
             if (deleteAttribute != null)
                 routesInfo.Delete = new RouteInfo
                                     {
+                                        RouteName = deleteAttribute.Name,
+                                        ControllerName = controllerName,
+                                        ActionName = actionName,
+                                        Version = deleteAttribute.Version,
+                                        Render = deleteAttribute.Render,
+                                        
                                         BaseUriTemplate = routePrefixTemplate,
-                                        RelativeUriTemplate = deleteAttribute.Template,
-                                        Render = deleteAttribute.Render
+                                        RelativeUriTemplate = deleteAttribute.Template
                                     };
 
             var queryAttribute =
@@ -135,32 +155,49 @@ namespace CollectionJsonExtended.Client
             if (queryAttribute != null)
                 routesInfo.Queries.Add(new RouteInfo
                                        {
-                                           BaseUriTemplate = routePrefixTemplate,
-                                           RelativeUriTemplate = queryAttribute.Template,
+                                           RouteName = queryAttribute.Name,
+                                           ControllerName = controllerName,
+                                           ActionName = actionName,
+                                           Version = queryAttribute.Version,
                                            Rel = queryAttribute.Rel,
-                                           Render = queryAttribute.Render
+                                           Render = queryAttribute.Render,
+
+                                           BaseUriTemplate = routePrefixTemplate,
+                                           RelativeUriTemplate = queryAttribute.Template
                                        });
 
             var itemAttributes =
-                methodInfo.GetCustomAttributes<RouteCollectionJsonItemAttribute>()
+                methodInfo.GetCustomAttributes<RouteProviderCollectionJsonItemAttribute>()
                     .ToList();
             var itemAttribute =
                 itemAttributes.SingleOrDefault(a => a.Rel == null);
             if (itemAttribute != null)
+            {
                 routesInfo.Item = new RouteInfo
                                   {
+                                      RouteName = itemAttribute.Name,
+                                      ControllerName = controllerName,
+                                      ActionName = actionName,
+                                      Version = itemAttribute.Version,
+
                                       BaseUriTemplate = routePrefixTemplate,
                                       RelativeUriTemplate = itemAttribute.Template
                                   };
+            }
             var itemLinkAttribute =
                 itemAttributes.SingleOrDefault(a => a.Rel != null);
             if (itemLinkAttribute != null)
                 routesInfo.ItemLinks.Add(new RouteInfo
                                          {
-                                             BaseUriTemplate = routePrefixTemplate,
-                                             RelativeUriTemplate = itemLinkAttribute.Template,
+                                             RouteName = itemLinkAttribute.Name,
+                                             ControllerName = controllerName,
+                                             ActionName = actionName,
+                                             Version = itemLinkAttribute.Version,
                                              Rel = itemLinkAttribute.Rel,
-                                             Render = itemLinkAttribute.Render
+                                             Render = itemLinkAttribute.Render,
+
+                                             BaseUriTemplate = routePrefixTemplate,
+                                             RelativeUriTemplate = itemLinkAttribute.Template                                             
                                          });
         }
     };
@@ -168,9 +205,14 @@ namespace CollectionJsonExtended.Client
 
     public class RouteInfo
     {
-        public string BaseUriTemplate { get; set; }
-        public string RelativeUriTemplate { get; set; } //TODO (?) validate the route on consistence with type of entity (Id, Guid, etc.) and make parsable for output
+        public string RouteName { get; set; }
+        public string ControllerName { get; set; }
+        public string ActionName { get; set; }
         public RenderType Render { get; set; }
         public string Rel { get; set; }
+        public string Version { get; set; }
+        //still needed?
+        public string BaseUriTemplate { get; set; }
+        public string RelativeUriTemplate { get; set; } //TODO (?) validate the route on consistence with type of entity (Id, Guid, etc.) and make parsable for output
     }
 }

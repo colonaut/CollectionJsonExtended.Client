@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Runtime.Remoting;
+using System.Security.Policy;
 using System.Web;
 using System.Web.Hosting;
 using System.Web.Mvc;
@@ -83,7 +84,9 @@ namespace CollectionJsonExtended.Client
     public class CollectionJsonResult<TEntity> : CollectionJsonResult where TEntity : class, new()
     {
         readonly TEntity _entity;
-        readonly IEnumerable<TEntity> _entities; 
+        readonly IEnumerable<TEntity> _entities;
+        readonly Type _entityType = typeof(TEntity);
+
 
         /*Ctor*/
         public CollectionJsonResult(TEntity entity,
@@ -135,7 +138,34 @@ namespace CollectionJsonExtended.Client
             if (controllerContext == null)
                 throw new ArgumentNullException("controllerContext");
 
+            //these are needed to parse uri template's {"action", "controller"}, invoke a IsParsed Uri or another property Uri
+            var routeData = controllerContext.RouteData;
+            var actionName = routeData.GetRequiredString("action");
+            var controllerName = routeData.GetRequiredString("controller");
+
             
+
+
+            //gimme my routes info
+            var routesInfo = RoutesInfo.GetPublishedRoutesInfo(_entityType);
+            if (routesInfo == null)
+                throw new NullReferenceException("No RoutesInfo for Type " + _entityType.Name);
+
+
+            var iri = routesInfo.Item;
+
+            var a = new UrlHelper(controllerContext.RequestContext);
+            
+            //var v = Url.RouteUrl("OpinionByCompany", new RouteValueDictionary(new{cid=newop.CompanyID,oid=newop.ID}), HttpContext.Request.Url.Scheme, HttpContext.Request.Url.Authority)
+
+            
+            var y = UrlHelper.GenerateUrl(null, //TODO cannot create routename....
+                iri.ActionName,
+                iri.ControllerName,
+                new RouteValueDictionary {{"id", 1}}, //TODO other param name? how?
+                RouteTable.Routes,
+                controllerContext.RequestContext,
+                true);
 
             ////TODO versuche sction conroller area schon zu parsen (new Uri?) sollte aber eher im ececute gemacht werden
             //Uri result;
@@ -163,7 +193,7 @@ namespace CollectionJsonExtended.Client
             var httpContext = controllerContext.HttpContext;
             var httpMethod = httpContext.Request.HttpMethod.ToUpperInvariant();
             var response = httpContext.Response;
-            
+
             var controllerType = controllerContext.Controller.GetType();
             var controllerDescriptor = new ReflectedControllerDescriptor(controllerType);
             var actionDescriptor = controllerDescriptor.FindAction(controllerContext,

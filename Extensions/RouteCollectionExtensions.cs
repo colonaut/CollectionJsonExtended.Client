@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Reflection;
 using System.Web;
 using System.Web.Mvc;
 using System.Web.Mvc.Routing;
@@ -14,7 +15,7 @@ namespace CollectionJsonExtended.Client.Extensions
 
         public static void PublishCollectionJsonAttributeRoutes(this RouteCollection routes)
         {
-            RoutesInfo.PublishRoutesInfo();
+            RoutesInfo.PublishRoutesInfo(Assembly.GetCallingAssembly());
         }
 
 
