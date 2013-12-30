@@ -2,15 +2,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Reflection;
-using System.Runtime.Remoting;
-using System.Security.Policy;
-using System.Web;
-using System.Web.Hosting;
 using System.Web.Mvc;
 using System.Web.Routing;
-using CollectionJsonExtended.Client.Attributes;
-using CollectionJsonExtended.Client.Extensions;
 using CollectionJsonExtended.Core;
 using Newtonsoft.Json;
 
@@ -41,6 +34,7 @@ namespace CollectionJsonExtended.Client
     //CollectionJsonErrorResult
 
     //working approach (via result) but not really nice. we cannot really find the routes easily.
+    [Obsolete]
     public class CollectionJsonEntityResult<TEntity> : CollectionJsonResult where TEntity : class, new()
     {
         readonly TEntity _entity;
@@ -87,7 +81,6 @@ namespace CollectionJsonExtended.Client
         readonly IEnumerable<TEntity> _entities;
         readonly Type _entityType = typeof(TEntity);
 
-
         /*Ctor*/
         public CollectionJsonResult(TEntity entity,
             CollectionJsonSerializerSettings serializerSettings = null) //TODO add my collection json formater here, inject? or what?
@@ -102,7 +95,6 @@ namespace CollectionJsonExtended.Client
             SerializerSettings = serializerSettings ?? DefaultSerializerSettings;
             _entities = entities;
         }
-
 
         /*Properties*/
         public readonly CollectionJsonSerializerSettings SerializerSettings;
@@ -121,7 +113,6 @@ namespace CollectionJsonExtended.Client
             }
         }
 
-        
         /*Override*/
         /// <summary>
         /// Enables processing of the result of an action method by a custom 
@@ -138,86 +129,51 @@ namespace CollectionJsonExtended.Client
             if (controllerContext == null)
                 throw new ArgumentNullException("controllerContext");
 
-            //these are needed to parse uri template's {"action", "controller"}, invoke a IsParsed Uri or another property Uri
-            var routeData = controllerContext.RouteData;
-            var actionName = routeData.GetRequiredString("action");
-            var controllerName = routeData.GetRequiredString("controller");
-
-            
-
-
-            //gimme my routes info
-            var routesInfo = RoutesInfo.GetPublishedRoutesInfo(_entityType);
-            if (routesInfo == null)
-                throw new NullReferenceException("No RoutesInfo for Type " + _entityType.Name);
-
-
-            var iri = routesInfo.Item;
-
-            var a = new UrlHelper(controllerContext.RequestContext);
-            
-            //var v = Url.RouteUrl("OpinionByCompany", new RouteValueDictionary(new{cid=newop.CompanyID,oid=newop.ID}), HttpContext.Request.Url.Scheme, HttpContext.Request.Url.Authority)
-
-            
-            var y = UrlHelper.GenerateUrl(null, //TODO cannot create routename....
-                iri.ActionName,
-                iri.ControllerName,
-                new RouteValueDictionary {{"id", 1}}, //TODO other param name? how?
-                RouteTable.Routes,
-                controllerContext.RequestContext,
-                true);
-
-            ////TODO versuche sction conroller area schon zu parsen (new Uri?) sollte aber eher im ececute gemacht werden
-            //Uri result;
-            //Uri.TryCreate(routePrefixTemplate, UriKind.RelativeOrAbsolute, out result);
-
-
-
-            return;
-
-            //var myRouteData = controllerContext.RouteData;
-            //var controllerName = myRouteData.Values["controller"];
-            //foreach (var route in RouteTable.Routes.Where(r =>r.GetType() == typeof(Route)))
-            //{
-            //    var routeData = route.GetRouteData(controllerContext.HttpContext);
-            //    if (routeData != null
-            //        && routeData.Values["controller"] == controllerName)
-
-            //        routeData.DataTokens["Foo"] = "Bar";
-
-
-            //    //Add route and method name to Dictionary
-
-            //}
-
             var httpContext = controllerContext.HttpContext;
-            var httpMethod = httpContext.Request.HttpMethod.ToUpperInvariant();
             var response = httpContext.Response;
-
-            var controllerType = controllerContext.Controller.GetType();
-            var controllerDescriptor = new ReflectedControllerDescriptor(controllerType);
-            var actionDescriptor = controllerDescriptor.FindAction(controllerContext,
-                controllerContext.RouteData.GetRequiredString("action"));
+            var routeData = controllerContext.RouteData;
             
-            var statusCode = HttpStatusCode.NotFound; //This is initially 404. If NO ActionSelector (and route in it in Mvc5) is set, it will always return 404 not found. So you HAVE to set the attribute in the controller.
-
             response.ClearHeaders();
             response.ClearContent();
 
-            response.StatusCode = (int) HttpStatusCode.NotImplemented; //501 for now. test if our match stuff works
-
-            return;
+            //var controllerType = controllerContext.Controller.GetType();
+            //var actionName = routeData.GetRequiredString("action");
+            //var controllerName = routeData.GetRequiredString("controller");
+            //var controllerDescriptor = new ReflectedControllerDescriptor(controllerType);
             
-            /* Check if action selector attribute can be invoked (http method check in RouteCollectionJson attributes) */
-            foreach (var actionSelector in  actionDescriptor.GetSelectors())
+            object requestRouteName;
+            if (!routeData.DataTokens.TryGetValue("RouteName", out requestRouteName))
             {
-                if (actionSelector.Invoke(controllerContext))
-                {
-                    statusCode = GetStatusCode(httpMethod);
-                    break;
-                }
+                response.StatusCode = (int) HttpStatusCode.InternalServerError;
+                return;
             }
-            response.StatusCode = (int)statusCode;
+
+            var routeInfos = RouteInfo.GetPublishedRouteInfos(_entityType);
+            var requestUri = httpContext.Request.Url;
+            var requestRouteInfo = routeInfos
+                .SingleOrDefault(r => r.RouteName == requestRouteName as string);
+
+            if (requestRouteName == null)
+            {
+                response.StatusCode = (int)HttpStatusCode.InternalServerError;
+                return;
+            }
+
+            var statusCode = requestRouteInfo.SuccesHttpStatusCode;
+
+
+            //generate the urls
+            foreach (var routeInfo in routeInfos)
+            {
+                var url =
+                    UrlHelper.GenerateUrl(routeInfo.RouteName, //TODO cannot create routename....
+                        routeInfo.ActionDescriptor.ActionName,
+                        routeInfo.ActionDescriptor.ControllerDescriptor.ControllerName,
+                        new RouteValueDictionary {{"id", 1}}, //TODO other param name? how?
+                        RouteTable.Routes,
+                        controllerContext.RequestContext,
+                        true);
+            }
 
             if (response.StatusCode >= 400)
             {
@@ -227,11 +183,11 @@ namespace CollectionJsonExtended.Client
                 return; //TODO: create an error response
             }
 
-            //ResolveRoutes(controllerContext);
-            var requestUri = httpContext.Request.Url;
+            //Add content to response
             switch (statusCode)
             {
                 case HttpStatusCode.Created:
+                    //TODO Id property gedöns
                     response.AddHeader("Location", requestUri.ToString() + _entity.GetType().GetProperty("Id").GetValue(_entity)); //TODO (possible null pointer or completely change)
                     break;
                 case HttpStatusCode.OK:
@@ -241,74 +197,7 @@ namespace CollectionJsonExtended.Client
             }
         }
 
-        
-        /*Methods*/
-
-        [Obsolete]
-        void ResolveRoutes(ControllerContext context)
-        {
-            var controllerType = context.Controller.GetType();
-            var controllerDescriptor = new ReflectedControllerDescriptor(controllerType);
-            
-
-            foreach (var action in controllerDescriptor.GetCanonicalActions())
-            {
-
-                var actionName = action.ActionName;
-                var actionDescriptor = controllerDescriptor.FindAction(context, actionName);
-                
-
-                // Get any attributes (filters) on the action
-                //var attributes = action.GetCustomAttributes(typeof(CollectionJsonRouteAttribute), true); //this is the abstract which is currently not exisiting. we might use an interface...
-                //.SingleOrDefault(a => a.GetType().GetInterface("ICollectionJsonRoute", true) != null);
-
-
-
-              
-                //var selectors = action.GetSelectors();
-
-
-                //foreach (var actionSelector in selectors)
-                //{
-                //    actionSelector.Invoke(context);
-                //}
-
-                //var routeInfo = attributes;
-
-
-            }
-        }
-
-        HttpStatusCode GetStatusCode(string httpMethod)
-        {
-            switch (httpMethod)
-            {
-                case "GET": //read
-                    if (_entity != null)
-                        return HttpStatusCode.OK;
-                    return HttpStatusCode.NotFound;
-                case "PUT": //update
-                    if (_entity != null)
-                        return HttpStatusCode.OK;
-                    return HttpStatusCode.NotFound;
-                case "POST": //create
-                    if (_entity != null)
-                        return HttpStatusCode.Created;
-                    return HttpStatusCode.NotFound;
-                case "DELETE":
-                    if (_entity != null)
-                        return HttpStatusCode.NoContent;
-                    return HttpStatusCode.NotFound;
-                case "QUERY": //read multiple
-                    if (_entities != null)
-                        return HttpStatusCode.OK;
-                    return HttpStatusCode.NotFound;
-                default:
-                    return HttpStatusCode.MethodNotAllowed;
-            }
-
-            
-        }
+   
 
     }
 }

@@ -77,9 +77,8 @@
     <Compile Include="RenderType.cs" />
     <Compile Include="Attributes\RouteCollectionJsonAttributes.cs" />
     <Compile Include="CollectionJsonResult.cs" />
-    <Compile Include="Extensions\RouteCollectionExtensions.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="RoutesInfo.cs" />
+    <Compile Include="RouteInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
