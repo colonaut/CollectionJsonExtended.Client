@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics.Contracts;
 using System.Linq;
 using System.Net;
 using System.Reflection.Emit;
@@ -13,113 +14,112 @@ using System.Web.Mvc.Routing;
 using System.Web.Routing;
 //[assembly: WebActivatorEx.PreApplicationStartMethod(typeof(CollectionJsonPostAttribute), "Start")]
 using System.Web.UI.HtmlControls;
+using System.Web.WebPages;
 using WebActivatorEx;
 
 namespace CollectionJsonExtended.Client.Attributes
 {
-
+    
     //https://aspnetwebstack.codeplex.com/wikipage?title=Attribute%20Routing%20in%20MVC%20and%20Web%20API
     //search for IDirectRoute
 
-    //TRY THIS //we probably do not need the IRouteInfoProvider.... (we go with direct route provider....)
-    //public abstract class RouteProviderAttribute : Attribute
-    //{
-    //    protected RouteProviderAttribute(string template) { }
 
-    //    public string Template { get; }
-    //    public string Name { get; set; }
-    //    public int Order { get; set; }
-    //    public virtual RouteValueDictionary Constraints { get; }
-    //}
-
-
+    public enum Render
+    {
+        CollectionJson,
+        Rss,
+        Image
+    }
+    public enum Is
+    {
+        Base,
+        Item,
+        Template,
+        Query,
+        Create,
+        Delete,
+        Update
+    }
+    //the abstract
     public abstract class CollectionJsonRouteProviderAttribute : Attribute, IDirectRouteProvider
     {
-        //TODO test if all that routing shit works (the parsing of the you know constraints...)...
-        //TODO now try to publish the needed information directly, when route is created
-
         static readonly Dictionary<string, int> GeneratedRoutNames =
             new Dictionary<string, int>();
 
-        private int _order = -1;
+        /* property defaults */
+        private int _routeOrder = -1;
         private string _version = "1.0";
-        private string _name;
 
-
-        protected CollectionJsonRouteProviderAttribute()
-            : this(string.Empty)
-        {
-
-        }
-
+        /* ctor */
         protected CollectionJsonRouteProviderAttribute(string template)
         {
             Template = template;
         }
-        
 
-        public string Name
+
+        public string RouteName { get; set; }
+
+        public int RouteOrder
         {
-            get { return _name; }
-            set { _name = value; }
+            get { return _routeOrder; }
+            set { _routeOrder = value; }
         }
 
-        public int Order
-        {
-            get { return _order; }
-            set { _order = value; }
-        }
-
-        public string Version
+        public string Version //TODO implement version constraint (inline) or! better use it in settings... probably only useful for the whole set. check spec
         {
             get { return _version; }
             set { _version = value; }
         }
 
+        public string Relation { get; set; } //TODO think about: own attribute for links, rel, and prompt??? (make virtal if needed here)
+
+        public string Render { get; set; }
 
         public virtual RouteValueDictionary Constraints
         {
             get
             {
-                return new RouteValueDictionary();
-
+                return new RouteValueDictionary
+                       {
+                           {"HttpMethod", new[] {"GET"}}
+                       };
             }
 
         }
 
         public virtual RouteValueDictionary DataTokens
         {
-            get
-            {
-                return new RouteValueDictionary();
-            }
+            get { return new RouteValueDictionary(); }
         }
 
-        public virtual HttpStatusCode SuccessStatusCode
+        public virtual HttpStatusCode StatusCode
         {
             get { return HttpStatusCode.OK; }
         }
-
-
-        protected string Template { get; private set; }
-
-        protected string Rel { get; set; } //TODO think about: own attribute for links, rel, and prompt??? (make virtal if needed here)
-
-        protected string Render //TODO: make virtual if needed here
+        
+        public virtual Is Kind
         {
-            get { return "implement render information on base of return type (? does this work?)"; }
+            get { return Is.Base; }
         }
 
+       
+        protected string Template { get; private set; }
 
+
+        /*public methods*/
         public RouteEntry CreateRoute(DirectRouteProviderContext context)
         {
+            Contract.Assert(context != null);
+
+            ValidateTemplate(context);
+            ValidateRelation(context);
+            ValidateRouteName(context);
+
             var builder = context.CreateBuilder(Template);
-            
-            if (_name == null)
-                _name = GetGeneratedRoutName(builder);
-            
-            builder.Name = _name;
-            builder.Order = Order;
+            Contract.Assert(builder != null);
+
+            builder.Name = RouteName;
+            builder.Order = RouteOrder;
 
             if (builder.Constraints == null)
                 builder.Constraints = new RouteValueDictionary();
@@ -130,36 +130,82 @@ namespace CollectionJsonExtended.Client.Attributes
 
             if (builder.DataTokens == null)
                 builder.DataTokens = new RouteValueDictionary();
+            
             foreach (var dataToken in DataTokens)
             {
                 builder.DataTokens.Add(dataToken.Key, dataToken.Value);
             }
+
             if (DataTokens.ContainsKey("RouteName"))
                 DataTokens.Remove("RouteName");
-            builder.DataTokens.Add("RouteName", _name);
+            builder.DataTokens.Add("RouteName", RouteName);
 
             var buildResult = builder.Build();
 
-            PublishRouteInfo(builder);
+            PublishRoute(builder);
             
             return buildResult;
         }
 
+        /*private methods*/
+        void ValidateTemplate(DirectRouteProviderContext context)
+        {
+            if ((Kind != Is.Item && Kind != Is.Delete)
+                || !string.IsNullOrWhiteSpace(Template))
+                return;
+            var actionDescriptor =
+                context.Actions.Single(); //throws if not unique
+            var templates =
+                actionDescriptor.GetParameters().Select(parameterDescriptor =>
+                    "{" + parameterDescriptor.ParameterName + "}");
+            Template = string.Join("/", templates);
+        }
 
-        void PublishRouteInfo(DirectRouteBuilder builder)
+        void ValidateRelation(DirectRouteProviderContext context)
+        {
+            if ((Kind != Is.Query && Kind != Is.Delete && Kind != Is.Create)
+                || !string.IsNullOrEmpty(Relation))
+                return;
+            var actionDescriptor =
+                context.Actions.Single(); //throws if not unique
+            Relation = Kind.ToString().ToLowerInvariant()
+                + "." + actionDescriptor.ActionName.ToLowerInvariant();
+        }
+
+        void ValidateRouteName(DirectRouteProviderContext context)
+        {
+            if (RouteName != null)
+                return;
+
+            var actionDescriptor = context.Actions.Single(); //this throws if not unique!
+            var routeName = actionDescriptor.ControllerDescriptor.ControllerName
+                            + "." + actionDescriptor.ActionName;
+
+            if (GeneratedRoutNames.ContainsKey(routeName))
+            {
+                RouteName = routeName + (++GeneratedRoutNames[routeName]);
+                return;
+            }
+
+            GeneratedRoutNames.Add(routeName, 0);
+            RouteName = routeName;
+        }
+
+        void PublishRoute(DirectRouteBuilder builder)
         {
             var actionDescriptor = builder.Actions.Single();
-            
-            var reflectedActionDescriptor = (ReflectedActionDescriptor)actionDescriptor;
-            var methodInfo = reflectedActionDescriptor.MethodInfo;
-            var entityType = methodInfo.ReturnType.GetGenericArguments().Single();
+            var methodInfo = ((ReflectedActionDescriptor)actionDescriptor).MethodInfo;
+            var entityType = methodInfo.ReturnType.GetGenericArguments().Single(); //this will break, if not exactly one generic argument (the entity type) is given
 
             var routeInfo = new RouteInfo
             {
                 EntityType = entityType,
-                SuccesHttpStatusCode = SuccessStatusCode,
+                HttpStatusCode = StatusCode,
+                RouteName = RouteName,
                 ActionDescriptor = actionDescriptor,
-                RouteName = _name
+                Template = Template,
+                Kind = Kind,
+                Relation = Relation
             };
 
             object httpMethodConstraint;
@@ -170,60 +216,106 @@ namespace CollectionJsonExtended.Client.Attributes
                     routeInfo.AllowedMethods = casted.AllowedMethods;
             }
             
-
             RouteInfo.Publish(routeInfo);
         }
 
-        static string GetGeneratedRoutName(DirectRouteBuilder builder)
-        {
-            var actionDescriptor = builder.Actions.Single();
-            var routeName = actionDescriptor.ControllerDescriptor.ControllerName
-                            + "." + actionDescriptor.ActionName;
-            if (GeneratedRoutNames.ContainsKey(routeName))
-                return routeName + (++GeneratedRoutNames[routeName]);
-
-            GeneratedRoutNames.Add(routeName, 0);
-            return routeName;
-        }
-
     }
 
-
-
-    //END TRY THIS
-
-    //RouteCollectionJsonQueryAttribute (via url params retrieve a collection, no param returns all, if implemented)
-    //RouteCollectionJsonQueriesAttribute //returns the top level queries array
-    //RouteCollectionJsonTemplateAttribute
-
-    //the old abstract attribute
-    public abstract class RouteCollectionJsonAttribute : RouteProviderAttribute, IRouteInfoProvider//CollectionJsonRouteProviderAttribute
-    {
-
-        public static Dictionary<string, List<RouteCollectionJsonAttribute>> _debugInstancesDictionary =
-            new Dictionary<string, List<RouteCollectionJsonAttribute>>();  
-        
-        protected RouteCollectionJsonAttribute(string template)
-            : base(template)
-        {
-            if (!_debugInstancesDictionary.ContainsKey(template))
-                _debugInstancesDictionary.Add(template, new List<RouteCollectionJsonAttribute>());
-
-            _debugInstancesDictionary[template].Add(this);
-
-            var x = _debugInstancesDictionary[template];
-        }
-
-    }
-
-
+    //approach 2 (better)
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
-    public sealed class RouteCollectionJsonBaseAttribute : CollectionJsonRouteProviderAttribute//RouteCollectionJsonAttribute
+    public sealed class CollectionJsonRouteAttribute : CollectionJsonRouteProviderAttribute
     {
-        public RouteCollectionJsonBaseAttribute(string template)
+        private HttpStatusCode _statusCode;
+        private Is _kind;
+        private string _httpMethod;
+
+
+        public CollectionJsonRouteAttribute(Is kind)
+            : base(string.Empty)
+        {
+            Construct(kind);
+        }
+
+        public CollectionJsonRouteAttribute(Is kind, string template)
             : base(template)
+        {
+            Construct(kind);
+        }
+
+
+        public override RouteValueDictionary Constraints
+        {
+            get
+            {
+                return new RouteValueDictionary
+                       {
+                           {"HttpMethod", new HttpMethodConstraint(new[] {_httpMethod})}
+                       };
+            }
+        }
+
+        public override HttpStatusCode StatusCode
+        {
+            get { return _statusCode; }
+        }
+
+        public override Is Kind
+        {
+            get { return _kind; }
+        }
+
+
+        private void Construct(Is kind)
+        {
+            _kind = kind;
+            switch (Kind)
+            {
+                case Is.Create:
+                    _httpMethod = "POST";
+                    _statusCode = HttpStatusCode.Created;
+                    break;
+                case Is.Delete:
+                    _httpMethod = "DELETE";
+                    _statusCode = HttpStatusCode.NoContent;
+                    break;
+                case Is.Update:
+                    _httpMethod = "PUT";
+                    _statusCode = HttpStatusCode.OK;
+                    break;
+                default:
+                    _httpMethod = "GET";
+                    _statusCode = HttpStatusCode.OK;
+                    break;
+            }
+        }
+    }
+
+
+    public enum Do
+    {
+        Query,
+        Create,
+        Update,
+        Delete
+    }
+    [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
+    public sealed class CollectionJsonTaskAttribute : CollectionJsonRouteProviderAttribute
+    {
+        
+        private HttpStatusCode _statusCode;
+        private Do _kind;
+        private string _httpMethod;
+
+        public CollectionJsonTaskAttribute(Do kind)
+            : base(string.Empty)
         {
             
+            Construct(kind);
+        }
+        public CollectionJsonTaskAttribute(Do kind, string template)
+            : base(template)
+        {
+            Construct(kind);
         }
 
         public override RouteValueDictionary Constraints
@@ -232,121 +324,72 @@ namespace CollectionJsonExtended.Client.Attributes
             {
                 return new RouteValueDictionary
                        {
-                           {"HttpMethod", new HttpMethodConstraint(new[] {"GET"})}
+                           {"HttpMethod", new HttpMethodConstraint(new[] {_httpMethod})}
                        };
-
             }
         }
 
-        public override HttpStatusCode SuccessStatusCode { get { return base.SuccessStatusCode; } }
-    }
-
-    [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
-    public sealed class CollectionJsonItemRouteAttribute : CollectionJsonRouteProviderAttribute//RouteCollectionJsonAttribute
-    {
-        public CollectionJsonItemRouteAttribute(string template)
-            : base(template)
+        public override HttpStatusCode StatusCode
         {
-                
+            get { return _statusCode; }
         }
-        
-        public CollectionJsonItemRouteAttribute(string template, string rel)
-            : base(template)
-        {
-            Rel = rel;
-        }
-        
 
-        public override RouteValueDictionary Constraints
+        public override Is Kind
         {
             get
             {
-                return new RouteValueDictionary
-                       {
-                           {"HttpMethod", new HttpMethodConstraint(new[] {"GET"})}
-                       };
-
+                switch (_kind)
+                {
+                    case Do.Create:
+                        return Attributes.Is.Create;
+                    case Do.Update:
+                        return Attributes.Is.Update;
+                    case Do.Delete:
+                        return Attributes.Is.Delete;
+                    default:
+                        return Attributes.Is.Query;                        
+                }
             }
         }
 
-    }
-
-    [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
-    public sealed class RouteCollectionJsonCreateAttribute : CollectionJsonRouteProviderAttribute//RouteCollectionJsonAttribute
-    {
-        public RouteCollectionJsonCreateAttribute(string template)
-            : base(template)
+        private void Construct(Do kind)
         {
-            
-        }
-
-        
-        public override RouteValueDictionary Constraints
-        {
-            get
+            _kind = kind;
+            switch (Kind)
             {
-                return new RouteValueDictionary
-                       {
-                           {"HttpMethod", new HttpMethodConstraint(new[] {"POST"})}
-                       };
-
+                case Attributes.Is.Create:
+                    _httpMethod = "POST";
+                    _statusCode = HttpStatusCode.Created;
+                    break;
+                case Attributes.Is.Delete:
+                    _httpMethod = "DELETE";
+                    _statusCode = HttpStatusCode.NoContent;
+                    break;
+                case Attributes.Is.Update:
+                    _httpMethod = "PUT";
+                    _statusCode = HttpStatusCode.OK;
+                    break;
+                default:
+                    _httpMethod = "GET";
+                    _statusCode = HttpStatusCode.OK;
+                    break;
             }
-        }
-
-        public override HttpStatusCode SuccessStatusCode
-        {
-            get { return HttpStatusCode.Created; }
         }
     }
 
-    [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
-    public sealed class RouteCollectionJsonDeleteAttribute : CollectionJsonRouteProviderAttribute//RouteCollectionJsonAttribute
+    public enum As
     {
-        public RouteCollectionJsonDeleteAttribute(string template)
+        Base,
+        Item,
+        Query,
+        Template
+    }
+    [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
+    public sealed class CollectionJsonGetAttribute : CollectionJsonRouteProviderAttribute
+    {
+        public CollectionJsonGetAttribute(string template)
             : base(template)
         {
-            
-        }
-
-
-        public override RouteValueDictionary Constraints
-        {
-            get
-            {
-                return new RouteValueDictionary
-                       {
-                           {"HttpMethod", new HttpMethodConstraint(new[] {"DELETE"})}
-                       };
-
-            }
-        }
-
-        public override HttpStatusCode SuccessStatusCode
-        {
-            get { return HttpStatusCode.NoContent; }
-        }
-    }
-
-    [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
-    public sealed class RouteCollectionJsonQueryAttribute : CollectionJsonRouteProviderAttribute//RouteCollectionJsonAttribute
-    {
-        public RouteCollectionJsonQueryAttribute(string template,
-            string rel) : base(template)
-        {
-            Rel = rel;            
-        }
-
-        
-        public override RouteValueDictionary Constraints
-        {
-            get
-            {
-                return new RouteValueDictionary
-                       {
-                           {"HttpMethod", new HttpMethodConstraint(new[] {"QUERY"})}
-                       };
-
-            }
         }
     }
 

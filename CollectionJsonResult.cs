@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Web;
 using System.Web.Mvc;
 using System.Web.Routing;
 using CollectionJsonExtended.Core;
@@ -81,39 +82,35 @@ namespace CollectionJsonExtended.Client
         readonly IEnumerable<TEntity> _entities;
         readonly Type _entityType = typeof(TEntity);
 
+
         /*Ctor*/
         public CollectionJsonResult(TEntity entity,
             CollectionJsonSerializerSettings serializerSettings = null) //TODO add my collection json formater here, inject? or what?
         {
-            SerializerSettings = serializerSettings ?? DefaultSerializerSettings;
             _entity = entity;
+            SerializerSettings = serializerSettings ?? DefaultSerializerSettings;
+            RouteInfoCollection = RouteInfo.GetPublishedRouteInfos(_entityType);
         }
 
         public CollectionJsonResult(IEnumerable<TEntity> entities,
             CollectionJsonSerializerSettings serializerSettings = null) //TODO add my collection json formater here, inject? or what?
         {
-            SerializerSettings = serializerSettings ?? DefaultSerializerSettings;
             _entities = entities;
+            SerializerSettings = serializerSettings ?? DefaultSerializerSettings;
+            RouteInfoCollection = RouteInfo.GetPublishedRouteInfos(_entityType);
         }
 
-        /*Properties*/
+
+        /*public properties*/
         public readonly CollectionJsonSerializerSettings SerializerSettings;
 
-        public CollectionJsonWriter<TEntity> Writer
-        {
-            get
-            {
-                if (_entity != null)
-                    return new CollectionJsonWriter<TEntity>(_entity);
+        /* private properties */
+        private IEnumerable<RouteInfo> RouteInfoCollection { get; set; }
 
-                if (_entities != null)
-                    return new CollectionJsonWriter<TEntity>(_entities);
+        /**/
 
-                return null;
-            }
-        }
 
-        /*Override*/
+        /* override methods*/
         /// <summary>
         /// Enables processing of the result of an action method by a custom 
         /// type that inherits from the 
@@ -129,43 +126,78 @@ namespace CollectionJsonExtended.Client
             if (controllerContext == null)
                 throw new ArgumentNullException("controllerContext");
 
+            //var controllerType = controllerContext.Controller.GetType();
+            //var actionName = routeData.GetRequiredString("action");
+            //var controllerName = routeData.GetRequiredString("controller");
+            //var controllerDescriptor = new ReflectedControllerDescriptor(controllerType);
+
             var httpContext = controllerContext.HttpContext;
             var response = httpContext.Response;
             var routeData = controllerContext.RouteData;
             
             response.ClearHeaders();
             response.ClearContent();
-
-            //var controllerType = controllerContext.Controller.GetType();
-            //var actionName = routeData.GetRequiredString("action");
-            //var controllerName = routeData.GetRequiredString("controller");
-            //var controllerDescriptor = new ReflectedControllerDescriptor(controllerType);
-            
+            //validate url is given
+            var requestUrl = httpContext.Request.Url;
+            if (requestUrl == null)
+            {
+                CreateErrorResponse(response, HttpStatusCode.InternalServerError, "request url");
+                return;
+            }
+            //validate routee name can be found in route data
             object requestRouteName;
             if (!routeData.DataTokens.TryGetValue("RouteName", out requestRouteName))
             {
-                response.StatusCode = (int) HttpStatusCode.InternalServerError;
+                CreateErrorResponse(response, HttpStatusCode.InternalServerError, "request route name");
                 return;
             }
-
-            var routeInfos = RouteInfo.GetPublishedRouteInfos(_entityType);
-            var requestUri = httpContext.Request.Url;
-            var requestRouteInfo = routeInfos
+            //validate route info for route of request exist
+            var requestRouteInfo = RouteInfoCollection
                 .SingleOrDefault(r => r.RouteName == requestRouteName as string);
-
-            if (requestRouteName == null)
+            if (requestRouteInfo == null)
             {
-                response.StatusCode = (int)HttpStatusCode.InternalServerError;
+                CreateErrorResponse(response, HttpStatusCode.InternalServerError, "request route info");
                 return;
             }
 
-            var statusCode = requestRouteInfo.SuccesHttpStatusCode;
+            /* proceed to valid response */
+            var responseStatusCode = requestRouteInfo.HttpStatusCode;
+            response.StatusCode = (int)responseStatusCode;
 
+            var urls = GetUrls(controllerContext);
 
-            //generate the urls
-            foreach (var routeInfo in routeInfos)
+            //Add content to response
+            switch (responseStatusCode)
             {
-                var url =
+                case HttpStatusCode.Created:
+                    //TODO Id property gedöns
+                    response.AddHeader("Location", requestUrl.ToString() + _entity.GetType().GetProperty("Id").GetValue(_entity));
+                    break;
+                case HttpStatusCode.OK:
+                    response.ContentType = "application/json"; //will be application/collection+json;
+                    response.Write(GetWriter().Serialize());
+                    break;
+            }
+        }
+
+        
+        private CollectionJsonWriter<TEntity> GetWriter()
+        {
+            if (_entity != null)
+                return new CollectionJsonWriter<TEntity>(_entity);
+            
+            if (_entities != null)
+                return new CollectionJsonWriter<TEntity>(_entities);
+
+            return null;
+        }
+        
+        private IEnumerable<string> GetUrls(ControllerContext controllerContext)
+        {
+
+            foreach (var routeInfo in RouteInfoCollection)
+            {
+                yield return 
                     UrlHelper.GenerateUrl(routeInfo.RouteName, //TODO cannot create routename....
                         routeInfo.ActionDescriptor.ActionName,
                         routeInfo.ActionDescriptor.ControllerDescriptor.ControllerName,
@@ -174,30 +206,18 @@ namespace CollectionJsonExtended.Client
                         controllerContext.RequestContext,
                         true);
             }
-
-            if (response.StatusCode >= 400)
-            {
-                response.TrySkipIisCustomErrors = true;
-                response.ContentType = "application/json"; //will be application/collection+json;
-                response.Write(new CollectionJsonWriter<TEntity>(statusCode));
-                return; //TODO: create an error response
-            }
-
-            //Add content to response
-            switch (statusCode)
-            {
-                case HttpStatusCode.Created:
-                    //TODO Id property gedöns
-                    response.AddHeader("Location", requestUri.ToString() + _entity.GetType().GetProperty("Id").GetValue(_entity)); //TODO (possible null pointer or completely change)
-                    break;
-                case HttpStatusCode.OK:
-                    response.ContentType = "application/json"; //will be application/collection+json;
-                    response.Write(Writer.Serialize());
-                    break;
-            }
         }
 
-   
+        
+
+        private void CreateErrorResponse(HttpResponseBase response, HttpStatusCode statusCode, string message)
+        {
+            response.StatusCode = (int)statusCode;
+            response.TrySkipIisCustomErrors = true;
+            response.StatusDescription = message;
+            response.ContentType = "application/json"; //will be application/collection+json;
+            response.Write(new CollectionJsonWriter<TEntity>(statusCode, message));
+        }
 
     }
 }
