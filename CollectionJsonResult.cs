@@ -24,57 +24,7 @@ namespace CollectionJsonExtended.Client
                                                 Formatting = Formatting.Indented
                                             };
         }
-
     }
-
-
-    //CollectionJsonQueryResult
-
-    //CollectionJsonTemplateResult
-
-    //CollectionJsonErrorResult
-
-    //working approach (via result) but not really nice. we cannot really find the routes easily.
-    [Obsolete]
-    public class CollectionJsonEntityResult<TEntity> : CollectionJsonResult where TEntity : class, new()
-    {
-        readonly TEntity _entity;
-
-        public CollectionJsonEntityResult(TEntity entity,
-            CollectionJsonSerializerSettings serializerSettings = null) //TODO add my collection json formater here, inject? or what?
-        {
-            SerializerSettings = serializerSettings ?? DefaultSerializerSettings;
-            _entity = entity;
-        }
-
-
-        public readonly CollectionJsonSerializerSettings SerializerSettings;
-
-        public override void ExecuteResult(ControllerContext context)
-        {
-            if (context == null)
-                throw new ArgumentNullException("context");
-
-            var httpContext = context.HttpContext;
-            var response = httpContext.Response;
-            var httpMethod = httpContext.Request.HttpMethod.ToUpperInvariant();
-
-            if (_entity != null && httpMethod == "POST")
-            {
-                var requestUri = httpContext.Request.Url;
-                var writer = new CollectionJsonWriter<TEntity>(_entity, requestUri, SerializerSettings);
-                
-                response.StatusCode = (int) HttpStatusCode.OK;
-                response.ContentType = "application/json"; //will be application/collection+json;
-                response.Write(writer.Serialize());
-
-                return;
-            }
-            
-            response.StatusCode = (int)HttpStatusCode.NotFound;
-        }
-    }
-
 
     public class CollectionJsonResult<TEntity> : CollectionJsonResult where TEntity : class, new()
     {
@@ -89,7 +39,7 @@ namespace CollectionJsonExtended.Client
         {
             _entity = entity;
             SerializerSettings = serializerSettings ?? DefaultSerializerSettings;
-            RouteInfoCollection = RouteInfo.GetPublishedRouteInfos(_entityType);
+            RouteInfoCollection = RouteInfo.Find(_entityType);
         }
 
         public CollectionJsonResult(IEnumerable<TEntity> entities,
@@ -97,7 +47,7 @@ namespace CollectionJsonExtended.Client
         {
             _entities = entities;
             SerializerSettings = serializerSettings ?? DefaultSerializerSettings;
-            RouteInfoCollection = RouteInfo.GetPublishedRouteInfos(_entityType);
+            RouteInfoCollection = RouteInfo.Find(_entityType);
         }
 
 
@@ -106,9 +56,6 @@ namespace CollectionJsonExtended.Client
 
         /* private properties */
         private IEnumerable<RouteInfo> RouteInfoCollection { get; set; }
-
-        /**/
-
 
         /* override methods*/
         /// <summary>
@@ -160,11 +107,10 @@ namespace CollectionJsonExtended.Client
                 return;
             }
 
+            //TODO: CreateResponse, CreateTemplateResponse
             /* proceed to valid response */
-            var responseStatusCode = requestRouteInfo.HttpStatusCode;
+            var responseStatusCode = requestRouteInfo.StatusCode;
             response.StatusCode = (int)responseStatusCode;
-
-            var urls = GetUrls(controllerContext);
 
             //Add content to response
             switch (responseStatusCode)
@@ -180,7 +126,7 @@ namespace CollectionJsonExtended.Client
             }
         }
 
-        
+        /*private methods*/
         private CollectionJsonWriter<TEntity> GetWriter()
         {
             if (_entity != null)
@@ -192,6 +138,7 @@ namespace CollectionJsonExtended.Client
             return null;
         }
         
+        [Obsolete]
         private IEnumerable<string> GetUrls(ControllerContext controllerContext)
         {
 
@@ -209,7 +156,7 @@ namespace CollectionJsonExtended.Client
         }
 
         
-
+        
         private void CreateErrorResponse(HttpResponseBase response, HttpStatusCode statusCode, string message)
         {
             response.StatusCode = (int)statusCode;

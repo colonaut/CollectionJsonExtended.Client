@@ -1,21 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Data;
 using System.Diagnostics.Contracts;
 using System.Linq;
 using System.Net;
-using System.Reflection.Emit;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Security.Cryptography.X509Certificates;
-using System.Threading;
+using System.Reflection;
 using System.Web.Mvc;
 using System.Web.Mvc.Routing;
 using System.Web.Routing;
-//[assembly: WebActivatorEx.PreApplicationStartMethod(typeof(CollectionJsonPostAttribute), "Start")]
-using System.Web.UI.HtmlControls;
-using System.Web.WebPages;
-using WebActivatorEx;
+using CollectionJsonExtended.Core;
 
 namespace CollectionJsonExtended.Client.Attributes
 {
@@ -23,23 +15,6 @@ namespace CollectionJsonExtended.Client.Attributes
     //https://aspnetwebstack.codeplex.com/wikipage?title=Attribute%20Routing%20in%20MVC%20and%20Web%20API
     //search for IDirectRoute
 
-
-    public enum Render
-    {
-        CollectionJson,
-        Rss,
-        Image
-    }
-    public enum Is
-    {
-        Base,
-        Item,
-        Template,
-        Query,
-        Create,
-        Delete,
-        Update
-    }
     //the abstract
     public abstract class CollectionJsonRouteProviderAttribute : Attribute, IDirectRouteProvider
     {
@@ -148,8 +123,16 @@ namespace CollectionJsonExtended.Client.Attributes
         }
 
         /*private methods*/
+        //TODO merge in one and give actiondescriptor
         void ValidateTemplate(DirectRouteProviderContext context)
         {
+            
+            //TODO: we must ensure consistence of identifiers (attribute or Id property). The params of an i.e. Is.Item must be found as property in the entity.
+            //we probably do not need the identifier attribute
+            //We throw here if it doesn't match with the entityType.
+
+            //we must then throw, if we find more than one entity. but this should is done in core
+            
             if ((Kind != Is.Item && Kind != Is.Delete)
                 || !string.IsNullOrWhiteSpace(Template))
                 return;
@@ -197,15 +180,14 @@ namespace CollectionJsonExtended.Client.Attributes
             var methodInfo = ((ReflectedActionDescriptor)actionDescriptor).MethodInfo;
             var entityType = methodInfo.ReturnType.GetGenericArguments().Single(); //this will break, if not exactly one generic argument (the entity type) is given
 
-            var routeInfo = new RouteInfo
+            var routeInfo = new RouteInfo(entityType)
             {
-                EntityType = entityType,
-                HttpStatusCode = StatusCode,
-                RouteName = RouteName,
-                ActionDescriptor = actionDescriptor,
-                Template = Template,
+                Params = methodInfo.GetParameters(),
+                VirtualPath = builder.Template,
                 Kind = Kind,
-                Relation = Relation
+                Relation = Relation,
+                StatusCode = StatusCode,
+                RouteName = RouteName
             };
 
             object httpMethodConstraint;
@@ -216,7 +198,7 @@ namespace CollectionJsonExtended.Client.Attributes
                     routeInfo.AllowedMethods = casted.AllowedMethods;
             }
             
-            RouteInfo.Publish(routeInfo);
+            routeInfo.Publish();
         }
 
     }
@@ -341,13 +323,13 @@ namespace CollectionJsonExtended.Client.Attributes
                 switch (_kind)
                 {
                     case Do.Create:
-                        return Attributes.Is.Create;
+                        return Is.Create;
                     case Do.Update:
-                        return Attributes.Is.Update;
+                        return Is.Update;
                     case Do.Delete:
-                        return Attributes.Is.Delete;
+                        return Is.Delete;
                     default:
-                        return Attributes.Is.Query;                        
+                        return Is.Query;                        
                 }
             }
         }
@@ -357,15 +339,15 @@ namespace CollectionJsonExtended.Client.Attributes
             _kind = kind;
             switch (Kind)
             {
-                case Attributes.Is.Create:
+                case Is.Create:
                     _httpMethod = "POST";
                     _statusCode = HttpStatusCode.Created;
                     break;
-                case Attributes.Is.Delete:
+                case Is.Delete:
                     _httpMethod = "DELETE";
                     _statusCode = HttpStatusCode.NoContent;
                     break;
-                case Attributes.Is.Update:
+                case Is.Update:
                     _httpMethod = "PUT";
                     _statusCode = HttpStatusCode.OK;
                     break;

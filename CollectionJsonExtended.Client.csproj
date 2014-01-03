@@ -79,7 +79,6 @@
     <Compile Include="CollectionJsonResult.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="RouteInfo.cs" />
-    <Compile Include="Services\TypeResolver.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
