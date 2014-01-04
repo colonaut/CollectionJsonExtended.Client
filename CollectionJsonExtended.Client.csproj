@@ -74,7 +74,6 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="RenderType.cs" />
     <Compile Include="Attributes\RouteCollectionJsonAttributes.cs" />
     <Compile Include="CollectionJsonResult.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
