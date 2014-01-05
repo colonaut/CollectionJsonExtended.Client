@@ -130,10 +130,10 @@ namespace CollectionJsonExtended.Client
         private CollectionJsonWriter<TEntity> GetWriter()
         {
             if (_entity != null)
-                return new CollectionJsonWriter<TEntity>(_entity, RouteInfoCollection);
+                return new CollectionJsonWriter<TEntity>(_entity);
             
             if (_entities != null)
-                return new CollectionJsonWriter<TEntity>(_entities, RouteInfoCollection);
+                return new CollectionJsonWriter<TEntity>(_entities);
 
             return null;
         }

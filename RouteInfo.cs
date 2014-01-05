@@ -10,7 +10,7 @@ using CollectionJsonExtended.Core;
 
 namespace CollectionJsonExtended.Client
 {
-    public sealed class RouteInfo : UrlInfoProvider
+    public sealed class RouteInfo : UrlInfoBase
     {
         public RouteInfo(Type entityType)
             : base(entityType)
