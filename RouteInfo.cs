@@ -1,11 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Linq;
 using System.Net;
-using System.Reflection;
 using System.Web.Mvc;
-using System.Web.Mvc.Routing;
 using CollectionJsonExtended.Core;
 
 namespace CollectionJsonExtended.Client
@@ -18,6 +14,7 @@ namespace CollectionJsonExtended.Client
             
         }
 
+
         public HttpStatusCode StatusCode { get; set; }
 
         public string RouteName { get; set; }
@@ -26,15 +23,5 @@ namespace CollectionJsonExtended.Client
 
         public ActionDescriptor ActionDescriptor { get; set; }
 
-
-        public static IEnumerable<RouteInfo> Find(Type entityType)
-        {
-            return Cache.Where(r => r.EntityType == entityType) as IEnumerable<RouteInfo>;
-        }
-
-        public static IEnumerable<RouteInfo> GetCacheForDebug()
-        {
-            return Cache as IEnumerable<RouteInfo>;
-        }
     }
 }

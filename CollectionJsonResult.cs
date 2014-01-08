@@ -39,7 +39,8 @@ namespace CollectionJsonExtended.Client
         {
             _entity = entity;
             SerializerSettings = serializerSettings ?? DefaultSerializerSettings;
-            RouteInfoCollection = RouteInfo.Find(_entityType);
+            RouteInfoCollection = Singleton<UrlInfoCollection>.Instance.Find<RouteInfo>(_entityType);
+                //UrlInfoBase.Find(_entityType) as IEnumerable<RouteInfo>;
         }
 
         public CollectionJsonResult(IEnumerable<TEntity> entities,
@@ -47,7 +48,7 @@ namespace CollectionJsonExtended.Client
         {
             _entities = entities;
             SerializerSettings = serializerSettings ?? DefaultSerializerSettings;
-            RouteInfoCollection = RouteInfo.Find(_entityType);
+            RouteInfoCollection = Singleton<UrlInfoCollection>.Instance.Find<RouteInfo>(_entityType);
         }
 
 
@@ -137,26 +138,7 @@ namespace CollectionJsonExtended.Client
 
             return null;
         }
-        
-        [Obsolete]
-        private IEnumerable<string> GetUrls(ControllerContext controllerContext)
-        {
-
-            foreach (var routeInfo in RouteInfoCollection)
-            {
-                yield return 
-                    UrlHelper.GenerateUrl(routeInfo.RouteName, //TODO cannot create routename....
-                        routeInfo.ActionDescriptor.ActionName,
-                        routeInfo.ActionDescriptor.ControllerDescriptor.ControllerName,
-                        new RouteValueDictionary {{"id", 1}}, //TODO other param name? how?
-                        RouteTable.Routes,
-                        controllerContext.RequestContext,
-                        true);
-            }
-        }
-
-        
-        
+       
         private void CreateErrorResponse(HttpResponseBase response, HttpStatusCode statusCode, string message)
         {
             response.StatusCode = (int)statusCode;

@@ -4,10 +4,13 @@ using System.Diagnostics.Contracts;
 using System.Linq;
 using System.Net;
 using System.Reflection;
+using System.Security.Principal;
+using System.Text.RegularExpressions;
 using System.Web.Mvc;
 using System.Web.Mvc.Routing;
 using System.Web.Routing;
 using CollectionJsonExtended.Core;
+using CollectionJsonExtended.Core.Attributes;
 
 namespace CollectionJsonExtended.Client.Attributes
 {
@@ -22,8 +25,8 @@ namespace CollectionJsonExtended.Client.Attributes
             new Dictionary<string, int>();
 
         /* property defaults */
-        private int _routeOrder = -1;
-        private string _version = "1.0";
+        int _routeOrder = -1;
+        string _version = "1.0";
 
         /* ctor */
         protected CollectionJsonRouteProviderAttribute(string template)
@@ -117,13 +120,89 @@ namespace CollectionJsonExtended.Client.Attributes
 
             var buildResult = builder.Build();
 
-            PublishRoute(builder);
+            var routeInfo = CreateRouteInfo(builder);
+            routeInfo.Publish();
             
             return buildResult;
         }
+        
+        public RouteInfo CreateRouteInfo(DirectRouteBuilder builder)
+        {
+            var actionDescriptor = builder.Actions.Single();
+            var methodInfo = ((ReflectedActionDescriptor)actionDescriptor).MethodInfo;
+            var entityType = methodInfo.ReturnType.GetGenericArguments().Single(); //this will break, if not exactly one generic argument (the entity type) is given
+
+            var routeInfo = new RouteInfo(entityType)
+            {
+                Params = methodInfo.GetParameters(),
+                VirtualPath = builder.Template,
+                Kind = Kind,
+                Relation = Relation,
+                StatusCode = StatusCode,
+                RouteName = RouteName
+            };
+
+            object httpMethodConstraint;
+            if (Constraints.TryGetValue("HttpMethod", out httpMethodConstraint))
+            {
+                var casted = httpMethodConstraint as HttpMethodConstraint;
+                if (casted != null)
+                    routeInfo.AllowedMethods = casted.AllowedMethods;
+            }
+
+            //TODO move that shit to validate template!
+            if (Kind == Is.Item || Kind == Is.Delete)
+            {
+                routeInfo.PrimaryKeyTemplate =
+                    string.Format("{{{0}}}", Regex.Match(builder.Template, @"\{([^)]*)\}").Groups[1].Value);
+                
+                PropertyInfo primaryKeyProperty = entityType
+                    .GetProperty("Id", BindingFlags.Instance
+                                       | BindingFlags.IgnoreCase
+                                       | BindingFlags.Public)
+                ?? entityType.GetProperties()
+                        .SingleOrDefault(p =>
+                        {
+                            var a = p.GetCustomAttribute<CollectionJsonPropertyAttribute>();
+                            return a != null && a.IsPrimaryKey;
+                        });
+
+                if (primaryKeyProperty == null || !primaryKeyProperty.CanRead) // TODO check for possible types also
+                    throw new NullReferenceException(string.Format(
+                        "The entity {0} does not have an unique identifier." +
+                        " Either create a public get Id property" +
+                        " or set CollectionJsonPropertyAttribute[IsPrimaryKey = true]" +
+                        " on exactly 1 public get property",
+                        entityType.FullName));
+
+                var identifierParam = methodInfo.GetParameters().SingleOrDefault();
+
+                if (identifierParam == null)
+                    throw new ArgumentException(string.Format(
+                        "Method {0}.{1} should have exactly 1 param: entity identifier",
+                        ((methodInfo.DeclaringType != null) ? methodInfo.DeclaringType.Name : ""),
+                        methodInfo.Name));
+
+                if (identifierParam.ParameterType.FullName != primaryKeyProperty.PropertyType.FullName)
+                    throw new TypeAccessException(string.Format(
+                        "Type of method param ({0})" +
+                        " does not match type of entity's primary key ({1})",
+                        identifierParam.ParameterType.FullName,
+                        primaryKeyProperty.PropertyType.FullName));
+
+                routeInfo.PrimaryKeyProperty = primaryKeyProperty;
+                
+                
+                //throw new NotImplementedException("WORK!");
+
+
+            }
+
+            return routeInfo;
+        }
+
 
         /*private methods*/
-        //TODO merge in one and give actiondescriptor
         void ValidateTemplate(DirectRouteProviderContext context)
         {
             
@@ -136,6 +215,17 @@ namespace CollectionJsonExtended.Client.Attributes
             if ((Kind != Is.Item && Kind != Is.Delete)
                 || !string.IsNullOrWhiteSpace(Template))
                 return;
+
+            //TODO move checks for consistence of primary key and route in CreateRouteInfo to here.
+            //if all is good, but only template is missing (which can then be optional if you want an inline constraint)
+            //create the primaryKey template here. DO set an inline constraint.
+            //this must then be done because of differen method signatures.
+            //but only support types which ca have constraints in mvc routing.
+            //throw, ic attribute is set and type does not fit.
+            //Also throw, if method is NOT for item or delete and has a template {}: we do not need a {} then
+
+            //HOW DO WE TEST THIS METHOD? CALLING CREATEROUTE WILL LEAD TO FLICKER TESTS....
+
             var actionDescriptor =
                 context.Actions.Single(); //throws if not unique
             var templates =
@@ -173,37 +263,9 @@ namespace CollectionJsonExtended.Client.Attributes
             GeneratedRoutNames.Add(routeName, 0);
             RouteName = routeName;
         }
-
-        void PublishRoute(DirectRouteBuilder builder)
-        {
-            var actionDescriptor = builder.Actions.Single();
-            var methodInfo = ((ReflectedActionDescriptor)actionDescriptor).MethodInfo;
-            var entityType = methodInfo.ReturnType.GetGenericArguments().Single(); //this will break, if not exactly one generic argument (the entity type) is given
-
-            var routeInfo = new RouteInfo(entityType)
-            {
-                Params = methodInfo.GetParameters(),
-                VirtualPath = builder.Template,
-                Kind = Kind,
-                Relation = Relation,
-                StatusCode = StatusCode,
-                RouteName = RouteName
-            };
-
-            object httpMethodConstraint;
-            if (Constraints.TryGetValue("HttpMethod", out httpMethodConstraint))
-            {
-                var casted = httpMethodConstraint as HttpMethodConstraint;
-                if (casted != null)
-                    routeInfo.AllowedMethods = casted.AllowedMethods;
-            }
-            
-            routeInfo.Publish();
-        }
-
     }
 
-    //approach 2 (better)
+    //approach 1 (Is.xyz)
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
     public sealed class CollectionJsonRouteAttribute : CollectionJsonRouteProviderAttribute
     {
@@ -272,7 +334,7 @@ namespace CollectionJsonExtended.Client.Attributes
         }
     }
 
-
+    //approach 2 (Do.xyz, As.xyz) both work, offer both or skip one. Is is used in Core now. Which is good :)
     public enum Do
     {
         Query,
