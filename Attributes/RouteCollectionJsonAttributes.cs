@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics.Contracts;
 using System.Linq;
 using System.Net;
@@ -31,7 +32,7 @@ namespace CollectionJsonExtended.Client.Attributes
         /* ctor */
         protected CollectionJsonRouteProviderAttribute(string template)
         {
-            Template = template;
+            Template = template;            
         }
 
 
@@ -102,28 +103,23 @@ namespace CollectionJsonExtended.Client.Attributes
             if (builder.Constraints == null)
                 builder.Constraints = new RouteValueDictionary();
             
-            foreach (var constraint in Constraints)            {
+            foreach (var constraint in Constraints)
                 builder.Constraints.Add(constraint.Key, constraint.Value);
-            }
-
+            
             if (builder.DataTokens == null)
                 builder.DataTokens = new RouteValueDictionary();
             
             foreach (var dataToken in DataTokens)
-            {
                 builder.DataTokens.Add(dataToken.Key, dataToken.Value);
-            }
+            
 
             if (DataTokens.ContainsKey("RouteName"))
                 DataTokens.Remove("RouteName");
             builder.DataTokens.Add("RouteName", RouteName);
 
-            var buildResult = builder.Build();
+            CreateRouteInfo(builder).Publish();
 
-            var routeInfo = CreateRouteInfo(builder);
-            routeInfo.Publish();
-            
-            return buildResult;
+            return builder.Build();
         }
         
         public RouteInfo CreateRouteInfo(DirectRouteBuilder builder)
@@ -263,6 +259,7 @@ namespace CollectionJsonExtended.Client.Attributes
             GeneratedRoutNames.Add(routeName, 0);
             RouteName = routeName;
         }
+
     }
 
     //approach 1 (Is.xyz)
