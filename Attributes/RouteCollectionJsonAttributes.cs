@@ -176,7 +176,8 @@ namespace CollectionJsonExtended.Client.Attributes
                         return a != null && a.IsPrimaryKey;
                     });
 
-            if (primaryKeyProperty == null || !primaryKeyProperty.CanRead) // TODO check for possible types also
+            if (primaryKeyProperty == null
+                || !primaryKeyProperty.CanRead) // TODO check for possible types also
                 throw new NullReferenceException(string.Format(
                     "The entity {0} does not have an unique identifier." +
                     " Either create a public get Id property" +
