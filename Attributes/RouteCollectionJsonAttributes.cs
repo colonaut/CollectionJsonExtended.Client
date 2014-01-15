@@ -90,9 +90,10 @@ namespace CollectionJsonExtended.Client.Attributes
         {
             Contract.Assert(context != null);
 
-            ValidateTemplate(context);
-            ValidateRelation(context);
-            ValidateRouteName(context);
+            var actionDescriptor = context.Actions.Single(); //throws if nor unique exists
+            ValidateTemplate(actionDescriptor);
+            ValidateRelation(actionDescriptor);
+            ValidateRouteName(actionDescriptor);
 
             var builder = context.CreateBuilder(Template);
             Contract.Assert(builder != null);
@@ -127,10 +128,10 @@ namespace CollectionJsonExtended.Client.Attributes
             var actionDescriptor = builder.Actions.Single();
             var methodInfo = ((ReflectedActionDescriptor)actionDescriptor).MethodInfo;
             var entityType = methodInfo.ReturnType.GetGenericArguments().Single(); //this will break, if not exactly one generic argument (the entity type) is given
-
+            
             var routeInfo = new RouteInfo(entityType)
             {
-                Params = methodInfo.GetParameters(),
+                //Params = methodInfo.GetParameters(),
                 VirtualPath = builder.Template,
                 Kind = Kind,
                 Relation = Relation,
@@ -146,52 +147,15 @@ namespace CollectionJsonExtended.Client.Attributes
                     routeInfo.AllowedMethods = casted.AllowedMethods;
             }
 
-            //TODO move that shit to validate template!
             if (Kind == Is.Item || Kind == Is.Delete)
             {
+                routeInfo.PrimaryKeyProperty = GetValidatedPrimaryKeyProperty(actionDescriptor,
+                    methodInfo,
+                    entityType);
+
                 routeInfo.PrimaryKeyTemplate =
-                    string.Format("{{{0}}}", Regex.Match(builder.Template, @"\{([^)]*)\}").Groups[1].Value);
-                
-                PropertyInfo primaryKeyProperty = entityType
-                    .GetProperty("Id", BindingFlags.Instance
-                                       | BindingFlags.IgnoreCase
-                                       | BindingFlags.Public)
-                ?? entityType.GetProperties()
-                        .SingleOrDefault(p =>
-                        {
-                            var a = p.GetCustomAttribute<CollectionJsonPropertyAttribute>();
-                            return a != null && a.IsPrimaryKey;
-                        });
-
-                if (primaryKeyProperty == null || !primaryKeyProperty.CanRead) // TODO check for possible types also
-                    throw new NullReferenceException(string.Format(
-                        "The entity {0} does not have an unique identifier." +
-                        " Either create a public get Id property" +
-                        " or set CollectionJsonPropertyAttribute[IsPrimaryKey = true]" +
-                        " on exactly 1 public get property",
-                        entityType.FullName));
-
-                var identifierParam = methodInfo.GetParameters().SingleOrDefault();
-
-                if (identifierParam == null)
-                    throw new ArgumentException(string.Format(
-                        "Method {0}.{1} should have exactly 1 param: entity identifier",
-                        ((methodInfo.DeclaringType != null) ? methodInfo.DeclaringType.Name : ""),
-                        methodInfo.Name));
-
-                if (identifierParam.ParameterType.FullName != primaryKeyProperty.PropertyType.FullName)
-                    throw new TypeAccessException(string.Format(
-                        "Type of method param ({0})" +
-                        " does not match type of entity's primary key ({1})",
-                        identifierParam.ParameterType.FullName,
-                        primaryKeyProperty.PropertyType.FullName));
-
-                routeInfo.PrimaryKeyProperty = primaryKeyProperty;
-                
-                
-                //throw new NotImplementedException("WORK!");
-
-
+                    string.Format("{{{0}}}",
+                        Regex.Match(builder.Template, @"\{([^)]*)\}").Groups[1].Value);
             }
 
             return routeInfo;
@@ -199,54 +163,76 @@ namespace CollectionJsonExtended.Client.Attributes
 
 
         /*private methods*/
-        void ValidateTemplate(DirectRouteProviderContext context)
+        PropertyInfo GetValidatedPrimaryKeyProperty(ActionDescriptor actionDescriptor, MethodBase methodInfo, Type entityType)
         {
-            
-            //TODO: we must ensure consistence of identifiers (attribute or Id property). The params of an i.e. Is.Item must be found as property in the entity.
-            //we probably do not need the identifier attribute
-            //We throw here if it doesn't match with the entityType.
+            var primaryKeyProperty = entityType
+                .GetProperty("Id", BindingFlags.Instance
+                                   | BindingFlags.IgnoreCase
+                                   | BindingFlags.Public)
+            ?? entityType.GetProperties()
+                    .SingleOrDefault(p =>
+                    {
+                        var a = p.GetCustomAttribute<CollectionJsonPropertyAttribute>();
+                        return a != null && a.IsPrimaryKey;
+                    });
 
-            //we must then throw, if we find more than one entity. but this should is done in core
-            
+            if (primaryKeyProperty == null || !primaryKeyProperty.CanRead) // TODO check for possible types also
+                throw new NullReferenceException(string.Format(
+                    "The entity {0} does not have an unique identifier." +
+                    " Either create a public get Id property" +
+                    " or set CollectionJsonPropertyAttribute[IsPrimaryKey = true]" +
+                    " on exactly 1 public get property",
+                    entityType.FullName));
+
+            var identifierParam = methodInfo.GetParameters().SingleOrDefault();
+
+            if (identifierParam == null)
+                throw new ArgumentNullException(string.Format(
+                    "Method {0}.{1} should have exactly 1 param pointing on the entity's primary key",
+                    ((methodInfo.DeclaringType != null) ? methodInfo.DeclaringType.Name : ""),
+                    methodInfo.Name));
+
+            if (identifierParam.ParameterType.FullName != primaryKeyProperty.PropertyType.FullName)
+                throw new TypeAccessException(string.Format(
+                    "Type of method param ({0})" +
+                    " does not match type of entity's primary key ({1})",
+                    identifierParam.ParameterType.FullName,
+                    primaryKeyProperty.PropertyType.FullName));
+
+            return primaryKeyProperty;
+        }
+
+        void ValidateTemplate(ActionDescriptor actionDescriptor)
+        {
+            //TODO we must throw, if we find more than one entity. but this should is done in core
             if ((Kind != Is.Item && Kind != Is.Delete)
                 || !string.IsNullOrWhiteSpace(Template))
                 return;
 
-            //TODO move checks for consistence of primary key and route in CreateRouteInfo to here.
-            //if all is good, but only template is missing (which can then be optional if you want an inline constraint)
-            //create the primaryKey template here. DO set an inline constraint.
-            //this must then be done because of differen method signatures.
-            //but only support types which ca have constraints in mvc routing.
-            //throw, ic attribute is set and type does not fit.
-            //Also throw, if method is NOT for item or delete and has a template {}: we do not need a {} then
-
-            //HOW DO WE TEST THIS METHOD? CALLING CREATEROUTE WILL LEAD TO FLICKER TESTS....
-
-            var actionDescriptor =
-                context.Actions.Single(); //throws if not unique
+            //create Template (primary key only), if it doesn't exist
             var templates =
                 actionDescriptor.GetParameters().Select(parameterDescriptor =>
                     "{" + parameterDescriptor.ParameterName + "}");
-            Template = string.Join("/", templates);
+            Template =
+                string.Join("/", templates);
+
         }
 
-        void ValidateRelation(DirectRouteProviderContext context)
+        void ValidateRelation(ActionDescriptor actionDescriptor)
         {
             if ((Kind != Is.Query && Kind != Is.Delete && Kind != Is.Create)
                 || !string.IsNullOrEmpty(Relation))
                 return;
-            var actionDescriptor =
-                context.Actions.Single(); //throws if not unique
+
             Relation = Kind.ToString().ToLowerInvariant()
                 + "." + actionDescriptor.ActionName.ToLowerInvariant();
         }
 
-        void ValidateRouteName(DirectRouteProviderContext context)
+        void ValidateRouteName(ActionDescriptor actionDescriptor)
         {
             if (RouteName != null)
                 return;
 
-            var actionDescriptor = context.Actions.Single(); //this throws if not unique!
             var routeName = actionDescriptor.ControllerDescriptor.ControllerName
                             + "." + actionDescriptor.ActionName;
 

@@ -39,7 +39,8 @@ namespace CollectionJsonExtended.Client
         {
             _entity = entity;
             SerializerSettings = serializerSettings ?? DefaultSerializerSettings;
-            RouteInfoCollection = new SingletonFactory<UrlInfoCollection>().GetInstance().Find<RouteInfo>(_entityType);
+            RouteInfoCollection = SingletonFactory<UrlInfoCollection>.Instance
+                .Find<RouteInfo>(_entityType);
         }
 
         public CollectionJsonResult(IEnumerable<TEntity> entities,
@@ -47,7 +48,8 @@ namespace CollectionJsonExtended.Client
         {
             _entities = entities;
             SerializerSettings = serializerSettings ?? DefaultSerializerSettings;
-            RouteInfoCollection = new SingletonFactory<UrlInfoCollection>().GetInstance().Find<RouteInfo>(_entityType);
+            RouteInfoCollection = SingletonFactory<UrlInfoCollection>.Instance
+                .Find<RouteInfo>(_entityType);
         }
 
 
