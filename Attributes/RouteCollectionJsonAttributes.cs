@@ -163,7 +163,7 @@ namespace CollectionJsonExtended.Client.Attributes
 
 
         /*private methods*/
-        PropertyInfo GetValidatedPrimaryKeyProperty(ActionDescriptor actionDescriptor, MethodBase methodInfo, Type entityType)
+        PropertyInfo GetPrimaryKeyProperty(Type entityType)
         {
             var primaryKeyProperty = entityType
                 .GetProperty("Id", BindingFlags.Instance
@@ -184,6 +184,13 @@ namespace CollectionJsonExtended.Client.Attributes
                     " or set CollectionJsonPropertyAttribute[IsPrimaryKey = true]" +
                     " on exactly 1 public get property",
                     entityType.FullName));
+
+            return primaryKeyProperty;
+        }
+
+        PropertyInfo GetValidatedPrimaryKeyProperty(ActionDescriptor actionDescriptor, MethodBase methodInfo, Type entityType)
+        {
+            var primaryKeyProperty = GetPrimaryKeyProperty(entityType);
 
             var identifierParam = methodInfo.GetParameters().SingleOrDefault();
 
@@ -210,7 +217,7 @@ namespace CollectionJsonExtended.Client.Attributes
                 || !string.IsNullOrWhiteSpace(Template))
                 return;
 
-            //create Template (primary key only), if it doesn't exist
+            //create Template (primary key only), if it doesn't exist (should be alway true, when Is.Create)
             var templates =
                 actionDescriptor.GetParameters().Select(parameterDescriptor =>
                     "{" + parameterDescriptor.ParameterName + "}");

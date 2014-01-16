@@ -93,7 +93,7 @@ namespace CollectionJsonExtended.Client
                 CreateErrorResponse(response, HttpStatusCode.InternalServerError, "request url");
                 return;
             }
-            //validate routee name can be found in route data
+            //validate route name can be found in route data
             object requestRouteName;
             if (!routeData.DataTokens.TryGetValue("RouteName", out requestRouteName))
             {
@@ -109,45 +109,65 @@ namespace CollectionJsonExtended.Client
                 return;
             }
 
-            //TODO: CreateResponse, CreateTemplateResponse
-            /* proceed to valid response */
-            var responseStatusCode = requestRouteInfo.StatusCode;
-            response.StatusCode = (int)responseStatusCode;
-
-            //Add content to response
-            switch (responseStatusCode)
-            {
-                case HttpStatusCode.Created:
-                    //TODO Id property gedöns
-                    response.AddHeader("Location", requestUrl.ToString() + _entity.GetType().GetProperty("Id").GetValue(_entity));
-                    break;
-                case HttpStatusCode.OK:
-                    response.ContentType = "application/json"; //will be application/collection+json;
-                    response.Write(GetWriter().Serialize());
-                    break;
-            }
+            CreateResponse(response, requestRouteInfo);
         }
 
         /*private methods*/
-        private CollectionJsonWriter<TEntity> GetWriter()
+        private void CreateResponse(HttpResponseBase response, RouteInfo routeInfo)
         {
-            if (_entity != null)
-                return new CollectionJsonWriter<TEntity>(_entity);
-            
-            if (_entities != null)
-                return new CollectionJsonWriter<TEntity>(_entities);
+            switch (routeInfo.StatusCode)
+            {
+                case HttpStatusCode.OK:
+                    if (_entity == null && _entities == null)
+                    {
+                        CreateErrorResponse(response, HttpStatusCode.InternalServerError, "Writer has no data");
+                        return;
+                    }
+                    var writer = _entity != null
+                        ? new CollectionJsonWriter<TEntity>(_entity)
+                        : new CollectionJsonWriter<TEntity>(_entities);
+                    response.ContentType = "application/json"; //will be application/collection+json;
+                    response.Write(writer.Serialize());
+                    break;
 
-            return null;
+                case HttpStatusCode.Created:
+                    if (_entity == null)
+                    {
+                        CreateErrorResponse(response, HttpStatusCode.InternalServerError, "Entity is null");
+                        return;
+                    }
+                    var itemRouteInfo = RouteInfoCollection.SingleOrDefault(r => r.Kind == Is.Item);
+                    if (itemRouteInfo == null)
+                    {
+                        CreateErrorResponse(response, HttpStatusCode.InternalServerError, "item route info");
+                        return;
+                    }
+                    var primaryKey = itemRouteInfo.PrimaryKeyProperty.GetValue(_entity).ToString();
+                    response.AddHeader("Location",
+                        itemRouteInfo.VirtualPath.Replace(itemRouteInfo.PrimaryKeyTemplate, primaryKey));
+                    break;
+
+                case HttpStatusCode.NoContent:
+                    break;
+
+                default:
+                    CreateErrorResponse(response,
+                        HttpStatusCode.InternalServerError,
+                        "Status code not supported: " + routeInfo.StatusCode);
+                    return;
+            }
+
+            response.StatusCode = (int) routeInfo.StatusCode;
         }
-       
+
         private void CreateErrorResponse(HttpResponseBase response, HttpStatusCode statusCode, string message)
         {
-            response.StatusCode = (int)statusCode;
+            //TODO check this all with spec. these could be real errors (http). error code could be used with content, etc...
+            response.StatusCode = (int)HttpStatusCode.OK;
             response.TrySkipIisCustomErrors = true;
-            response.StatusDescription = message;
+            //response.StatusDescription = message;
             response.ContentType = "application/json"; //will be application/collection+json;
             response.Write(new CollectionJsonWriter<TEntity>(statusCode, message));
         }
-
     }
 }
