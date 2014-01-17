@@ -1,0 +1,17 @@
+﻿/******************************
+* CollectionJsonExtended.Client
+****************************MK*/
+      
+What is this about?
+
+
+Dependencies
+------------
+- Mvc5
+- Mvc5 attribute routing must be active (This might change in future releases)
+- CollectionJsonExtended.Core
+
+
+How to use in a Mvc controller
+------------------------------
+
