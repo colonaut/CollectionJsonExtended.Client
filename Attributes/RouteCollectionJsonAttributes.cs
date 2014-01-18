@@ -1,12 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics.Contracts;
 using System.Linq;
 using System.Net;
 using System.Reflection;
-using System.Security.Principal;
 using System.Text.RegularExpressions;
+using System.Web;
 using System.Web.Mvc;
 using System.Web.Mvc.Routing;
 using System.Web.Routing;
@@ -158,6 +157,9 @@ namespace CollectionJsonExtended.Client.Attributes
                         Regex.Match(builder.Template, @"\{([^)]*)\}").Groups[1].Value);
             }
 
+            if (Kind == Is.Query)
+                routeInfo.QueryParams = methodInfo.GetParameters();
+        
             return routeInfo;
         }
 
@@ -317,6 +319,10 @@ namespace CollectionJsonExtended.Client.Attributes
                     _httpMethod = "PUT";
                     _statusCode = HttpStatusCode.OK;
                     break;
+                //case Is.Query:
+                //    _httpMethod = "QUERY"; //we do not use query but standard implementations of HTTP and query via get
+                //    _statusCode = HttpStatusCode.OK;
+                //    break;
                 default:
                     _httpMethod = "GET";
                     _statusCode = HttpStatusCode.OK;
@@ -427,5 +433,5 @@ namespace CollectionJsonExtended.Client.Attributes
         {
         }
     }
-
+    
 }

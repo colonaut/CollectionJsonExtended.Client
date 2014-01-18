@@ -4,8 +4,8 @@ using System.Linq;
 using System.Net;
 using System.Web;
 using System.Web.Mvc;
-using System.Web.Routing;
 using CollectionJsonExtended.Core;
+using CollectionJsonExtended.Core.Extensions;
 using Newtonsoft.Json;
 
 namespace CollectionJsonExtended.Client
@@ -74,12 +74,7 @@ namespace CollectionJsonExtended.Client
 
             if (controllerContext == null)
                 throw new ArgumentNullException("controllerContext");
-
-            //var controllerType = controllerContext.Controller.GetType();
-            //var actionName = routeData.GetRequiredString("action");
-            //var controllerName = routeData.GetRequiredString("controller");
-            //var controllerDescriptor = new ReflectedControllerDescriptor(controllerType);
-
+            
             var httpContext = controllerContext.HttpContext;
             var response = httpContext.Response;
             var routeData = controllerContext.RouteData;
