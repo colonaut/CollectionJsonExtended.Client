@@ -19,6 +19,7 @@ namespace CollectionJsonExtended.Client.Attributes
     //search for IDirectRoute
 
     //TODO: if its a link, it should be able to not only support collectionJsonResult... check if it already works
+    //TODO: Is could be called As, but then we do not want to use approach 2
 
     //the abstract
     public abstract class CollectionJsonRouteProviderAttribute : Attribute, IDirectRouteProvider
@@ -429,6 +430,8 @@ namespace CollectionJsonExtended.Client.Attributes
         Base,
         Item,
         Query,
+        LinkForBase,
+        LinkForItem,
         Template
     }
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
