@@ -5,7 +5,6 @@ using System.Net;
 using System.Web;
 using System.Web.Mvc;
 using CollectionJsonExtended.Core;
-using CollectionJsonExtended.Core.Extensions;
 using Newtonsoft.Json;
 
 namespace CollectionJsonExtended.Client
@@ -35,7 +34,7 @@ namespace CollectionJsonExtended.Client
 
         /*Ctor*/
         public CollectionJsonResult(TEntity entity,
-            CollectionJsonSerializerSettings serializerSettings = null) //TODO add my collection json formater here, inject? or what?
+            CollectionJsonSerializerSettings serializerSettings = null)
         {
             _entity = entity;
             SerializerSettings = serializerSettings ?? DefaultSerializerSettings;
@@ -44,7 +43,7 @@ namespace CollectionJsonExtended.Client
         }
 
         public CollectionJsonResult(IEnumerable<TEntity> entities,
-            CollectionJsonSerializerSettings serializerSettings = null) //TODO add my collection json formater here, inject? or what?
+            CollectionJsonSerializerSettings serializerSettings = null)
         {
             _entities = entities;
             SerializerSettings = serializerSettings ?? DefaultSerializerSettings;

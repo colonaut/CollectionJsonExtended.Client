@@ -18,6 +18,8 @@ namespace CollectionJsonExtended.Client.Attributes
     //https://aspnetwebstack.codeplex.com/wikipage?title=Attribute%20Routing%20in%20MVC%20and%20Web%20API
     //search for IDirectRoute
 
+    //TODO: if its a link, it should be able to not only support collectionJsonResult... check if it already works
+
     //the abstract
     public abstract class CollectionJsonRouteProviderAttribute : Attribute, IDirectRouteProvider
     {
@@ -146,7 +148,7 @@ namespace CollectionJsonExtended.Client.Attributes
                     routeInfo.AllowedMethods = casted.AllowedMethods;
             }
 
-            if (Kind == Is.Item || Kind == Is.Delete)
+            if (Kind == Is.Item || Kind == Is.Delete || Kind == Is.LinkForItem)
             {
                 routeInfo.PrimaryKeyProperty = GetValidatedPrimaryKeyProperty(actionDescriptor,
                     methodInfo,
@@ -190,7 +192,9 @@ namespace CollectionJsonExtended.Client.Attributes
             return primaryKeyProperty;
         }
 
-        PropertyInfo GetValidatedPrimaryKeyProperty(ActionDescriptor actionDescriptor, MethodBase methodInfo, Type entityType)
+        PropertyInfo GetValidatedPrimaryKeyProperty(ActionDescriptor actionDescriptor,
+            MethodBase methodInfo,
+            Type entityType)
         {
             var primaryKeyProperty = GetPrimaryKeyProperty(entityType);
 
@@ -215,7 +219,8 @@ namespace CollectionJsonExtended.Client.Attributes
         void ValidateTemplate(ActionDescriptor actionDescriptor)
         {
             //TODO we must throw, if we find more than one entity. but this should is done in core
-            if ((Kind != Is.Item && Kind != Is.Delete)
+            if ((Kind != Is.Item && Kind != Is.Delete
+                && Kind != Is.LinkForItem)
                 || !string.IsNullOrWhiteSpace(Template))
                 return;
 
@@ -230,7 +235,8 @@ namespace CollectionJsonExtended.Client.Attributes
 
         void ValidateRelation(ActionDescriptor actionDescriptor)
         {
-            if ((Kind != Is.Query && Kind != Is.Delete && Kind != Is.Create)
+            if ((Kind != Is.Query && Kind != Is.Delete && Kind != Is.Create
+                && Kind != Is.LinkForBase && Kind != Is.LinkForItem)
                 || !string.IsNullOrEmpty(Relation))
                 return;
 
