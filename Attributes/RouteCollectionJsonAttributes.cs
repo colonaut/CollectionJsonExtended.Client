@@ -149,7 +149,7 @@ namespace CollectionJsonExtended.Client.Attributes
                     routeInfo.AllowedMethods = casted.AllowedMethods;
             }
 
-            if (Kind == Is.Item || Kind == Is.Delete || Kind == Is.LinkForItem)
+            if (Kind == Is.Item || Kind == Is.Delete || Kind == Is.ItemLink)
             {
                 routeInfo.PrimaryKeyProperty = GetValidatedPrimaryKeyProperty(actionDescriptor,
                     methodInfo,
@@ -221,7 +221,7 @@ namespace CollectionJsonExtended.Client.Attributes
         {
             //TODO we must throw, if we find more than one entity. but this should is done in core
             if ((Kind != Is.Item && Kind != Is.Delete
-                && Kind != Is.LinkForItem)
+                && Kind != Is.ItemLink)
                 || !string.IsNullOrWhiteSpace(Template))
                 return;
 
@@ -236,11 +236,21 @@ namespace CollectionJsonExtended.Client.Attributes
 
         void ValidateRelation(ActionDescriptor actionDescriptor)
         {
-            if ((Kind != Is.Query && Kind != Is.Delete && Kind != Is.Create
-                && Kind != Is.LinkForBase && Kind != Is.LinkForItem)
-                || !string.IsNullOrEmpty(Relation))
+            if (!string.IsNullOrEmpty(Relation))
                 return;
 
+            if (Kind == Is.Item
+                || Kind == Is.Base
+                || Kind == Is.Template)
+            {
+                var methodInfo = ((ReflectedActionDescriptor)actionDescriptor).MethodInfo;
+                var entityType = methodInfo.ReturnType.GetGenericArguments().Single(); //this will break, if not exactly one generic argument (the entity type) is given
+                
+                Relation = entityType.Name.ToLowerInvariant()
+                    + "." + Kind.ToString().ToLowerInvariant();
+                return;
+            }
+            
             Relation = Kind.ToString().ToLowerInvariant()
                 + "." + actionDescriptor.ActionName.ToLowerInvariant();
         }

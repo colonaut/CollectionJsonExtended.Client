@@ -56,7 +56,7 @@ namespace CollectionJsonExtended.Client
         public readonly CollectionJsonSerializerSettings SerializerSettings;
 
         /* private properties */
-        private IEnumerable<RouteInfo> RouteInfoCollection { get; set; }
+        IEnumerable<RouteInfo> RouteInfoCollection { get; set; }
 
         /* override methods*/
         /// <summary>
