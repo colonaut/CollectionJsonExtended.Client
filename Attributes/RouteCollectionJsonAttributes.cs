@@ -219,7 +219,6 @@ namespace CollectionJsonExtended.Client.Attributes
 
         void ValidateTemplate(ActionDescriptor actionDescriptor)
         {
-            //TODO we must throw, if we find more than one entity. but this should is done in core
             if ((Kind != Is.Item && Kind != Is.Delete
                 && Kind != Is.ItemLink)
                 || !string.IsNullOrWhiteSpace(Template))
