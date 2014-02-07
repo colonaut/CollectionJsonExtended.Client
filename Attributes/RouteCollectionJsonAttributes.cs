@@ -22,7 +22,7 @@ namespace CollectionJsonExtended.Client.Attributes
     //TODO: Is could be called As, but then we do not want to use approach 2
 
     //the abstract
-    public abstract class CollectionJsonRouteProviderAttribute : Attribute, IDirectRouteProvider
+    public abstract class CollectionJsonRouteProviderAttribute : Attribute, IDirectRouteFactory
     {
         static readonly Dictionary<string, int> GeneratedRoutNames =
             new Dictionary<string, int>();
@@ -88,7 +88,7 @@ namespace CollectionJsonExtended.Client.Attributes
 
 
         /*public methods*/
-        public RouteEntry CreateRoute(DirectRouteProviderContext context)
+        public RouteEntry CreateRoute(DirectRouteFactoryContext context)
         {
             Contract.Assert(context != null);
 
@@ -125,7 +125,7 @@ namespace CollectionJsonExtended.Client.Attributes
             return builder.Build();
         }
         
-        public RouteInfo CreateRouteInfo(DirectRouteBuilder builder)
+        public RouteInfo CreateRouteInfo(IDirectRouteBuilder builder)
         {
             var actionDescriptor = builder.Actions.Single();
             var methodInfo = ((ReflectedActionDescriptor)actionDescriptor).MethodInfo;
